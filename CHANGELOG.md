@@ -30,6 +30,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The committed `calls.jsonl` rows were generated against a `SEED_SPONSORS` list that briefly excluded the `Zyn` entry (a local diff that was later reverted to match main). The system prompt for ad detection joins SEED_SPONSORS names, so the stored `prompt_hash` values do not match what current `src/utils/constants.py` would produce. A fresh `benchmark run` will therefore see zero completed rows and dispatch the full ~40k-call sweep from scratch. The committed report and per-call artifacts remain valid for review; they are just not bit-reproducible from the committed code without restoring the Zyn-removed state.
 
+## [2.5.33] - 2026-05-27
+
+### Changed
+
+- **Re-publish under a new tag so Portainer's webhook pulls a fresh image.** No code changes vs `2.5.32` -- the `ttlequals0/minuspod:2.5.32` push contained the `bulk_upsert` discovery-count fix, but the running stack restarted from its local image cache (the tag string was unchanged) and never picked up the new layers. Bumping the tag forces a registry pull on the next webhook fire. Future deploys against a same-tag rebuild should either set the stack's pull policy to always or follow this same pattern.
+
+## [2.5.32] - 2026-05-27
+
+### Changed
+
+- **Dashboard refresh controls now match the podcast detail page.** Each podcast card's `Refresh` / `Force refresh` dropdown trigger uses the same `px-3 py-1.5 sm:px-4 sm:py-2` sizing and default chevron as the `Refresh Feed` dropdown on `FeedDetail`, so the two pages look identical. The sibling Delete button on each card was bumped to match the new height.
+- **Dashboard `Refresh All` is now a dropdown with a `Force Refresh All` option** that mirrors the per-card pattern. The primary item issues a conditional GET per feed; the secondary item posts `{"force": true}` so every podcast's stored ETag / Last-Modified is bypassed and every feed is fully re-fetched.
+- **`refreshAllFeeds(options?)` in the frontend API client** now accepts an optional `{ force?: boolean }` argument, mirroring `refreshFeed`. Existing call sites without an argument continue to issue a non-force refresh.
+- **Mobile FeedCard footer compacted.** `CopyButton` hides its label on mobile and the Delete button collapses to a `Trash2` icon at `<sm` so the new larger Refresh dropdown trigger doesn't push the row off the card edge. The grid is now explicitly `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` so the single-column mobile layout doesn't expand cards to widest-child min-content width.
+
+### Fixed
+
+- **`POST /feeds/refresh` now actually forces a re-fetch when `force=true`.** The handler used to clear every podcast's stored ETag and then call `refresh_all_feeds()` with no force argument, so per-feed work hit `refresh_rss_feed`'s 30-second `_refresh_coalesce` gate and silently skipped feeds touched recently (e.g. by the 15-minute background tick). `refresh_all_feeds(force=False)` now accepts the flag and threads it through to `refresh_rss_feed(force=True)`, which bypasses both the coalesce window and the conditional GET. New unit tests in `tests/unit/test_refresh_all_feeds_force.py` cover the propagation in both directions and the coalesce bypass.
+- **Force-refresh now clears stale ETag/Last-Modified when upstream drops the header.** Previously `refresh_rss_feed` only updated the DB ETag when the new response carried at least one of the two headers; on `force=True` with a 200 OK that omits both, the old DB value persisted and could cause the next scheduled conditional GET to send a stale validator and get a false 304. The guard now also fires whenever `force=True`, so a force refresh always brings the stored validators back into sync with the actual response (even if that means clearing them).
+- **`bulk_upsert_discovered_episodes` now returns the real new-row count.** SQLite's `cursor.rowcount` reports `1` for both the INSERT and the UPDATE branch of an `INSERT ... ON CONFLICT DO UPDATE` (and even for a UPDATE that sets every column to its current value), so the counter was incrementing for every re-touched row -- harmless for the DB but the downstream `Discovered N new episode(s)` log over-reported by orders of magnitude on a force refresh (e.g. `2697 new` when zero rows were actually inserted). The function now snapshots the existing GUID set up front and only counts genuinely new GUIDs. Added regression test in `tests/unit/test_database.py::TestBulkUpsertDiscoveredEpisodes::test_bulk_upsert_returns_zero_when_all_episodes_already_exist`.
+- **FeedCard dropdown panel no longer clipped by the card's `overflow-hidden`.** The card root previously needed `overflow-hidden` to clip the artwork's square corner to the card's rounded top-left; the same property silently clipped the Refresh dropdown panel hanging below the footer. The artwork wrapper now owns its own `overflow-hidden rounded-tl-lg`, the footer carries `rounded-b-lg`, and the card root is free to overflow so dropdowns can escape.
+- **Dashboard toolbar `overflow-x-auto` no longer clips the Refresh All dropdown panel.** Segmented-control scrolling moved into an inner wrapper; the outer toolbar row is now plain flex so the dropdown can render below the trigger without being cut off.
+- **`DropdownMenu` now closes on outside click and `Escape`.** Pre-existing bug across all call sites (FeedCard, FeedListItem, FeedDetail, Dashboard) -- the menu only closed on trigger or item click, so users who opened it and then clicked elsewhere were left with a stuck-open menu. A new effect listens for `mousedown` / `touchstart` outside the menu root and for the `Escape` keypress.
+
+### Documentation
+
+- **OpenAPI: `POST /feeds/refresh` now documents the `force` request body** (the backend already accepted it; the spec was silent). Schema mirrors `/feeds/{slug}/refresh` with `additionalProperties: false`.
+
+### Removed
+
+- **`Keeps` removed from `SEED_SPONSORS`** (constants.py, the docstring sponsor list in the LLM prompt, and `sponsors_final.csv`). The brand name collides with the common English verb "keeps" and was generating too many validation false-positives in community pattern submissions. Sponsor count drops from 255 to 254; two count assertions in `tests/unit/test_sponsor_seed_idempotent.py` and `tests/unit/test_community_tags_constants.py` updated accordingly. Existing DB rows are untouched (sponsor seeding is additive; user-managed sponsors persist).
+
 ## [2.5.31] - 2026-05-27
 
 ### Fixed
