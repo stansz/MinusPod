@@ -6,7 +6,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.7.7] - 2026-06-07
+
+### Changed
+
+- Dependency updates rolled in from Dependabot. Python: anthropic 0.107.1, ctranslate2 4.8.0, beautifulsoup4 4.15.0, openai 2.41.0, scikit-learn 1.9.0. Frontend: react, react-dom, and react-is 19.2.7, react-router-dom 7.17.0, @tanstack/react-query 5.101.0, @types/react 19.2.17. CI: actions/checkout 6.0.3. (#338-#348)
+
+## [2.7.6] - 2026-06-07
+
+### Fixed
+
+- The Sponsors table no longer shows a horizontal scrollbar on desktop. In the fixed-layout table the Actions column was too narrow for its Edit and Delete buttons, so the cell overflowed and the table scrolled sideways. The column widths are rebalanced so the row fits at desktop widths.
 
 ### Documentation
 
