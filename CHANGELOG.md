@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.18.1] - 2026-06-22
+
+### Fixed
+
+- The text-pattern ad detector no longer cuts show content along with an ad. It was placing a single marker that ran from the real ad back through minutes of preceding show audio (one episode lost about 6 minutes of basketball talk before a Hims/Quince read). The matcher built each marker from every fragment it matched with no length limit, so a wrong early anchor or a chained merge could stretch one marker across unrelated content. Now a text-pattern marker longer than the longest plausible single read (3 min) is trimmed to where the sponsor name is actually spoken, matched as a whole word so "Hims" no longer matches "whims". An over-long span with no sponsor mention, or one that can't be attributed, is dropped rather than cut, and different sponsors stay as separate markers instead of merging into one giant span.
+
 ## [2.18.0] - 2026-06-21
 
 ### Added

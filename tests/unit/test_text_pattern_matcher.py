@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from text_pattern_matcher import (
     _split_sentences, _extract_intro_phrase, _extract_outro_phrase,
-    TextPatternMatcher, AdPattern,
+    TextPatternMatcher, AdPattern, TextMatch, MAX_MATCH_DURATION,
 )
 from ad_detector import _unpack_region, get_uncovered_portions, AdDetector
 from config import DEFAULT_AD_DURATION_ESTIMATE
@@ -317,3 +317,151 @@ class TestEstimateDuration:
             sponsor="test", scope="podcast", avg_duration=200.0,
         )
         assert matcher._estimate_start_from_duration(pattern, 50.0) == 0
+
+
+def _make_bare_matcher():
+    """A matcher built without __init__, with the attributes the methods under
+    test read set to inert defaults (no DB, no loaded patterns)."""
+    matcher = TextPatternMatcher.__new__(TextPatternMatcher)
+    matcher.db = None
+    matcher._patterns = []
+    matcher._pattern_vectors = None
+    matcher._vectorizer = None
+    matcher._pattern_buckets = {}
+    return matcher
+
+
+class TestConstrainOverlongSpans:
+    """Regression tests for the text_pattern over-cut fix.
+
+    Reproduces the Brilliant Idiots case: a merged span whose leading minutes
+    are show content with zero sponsor mentions and the real ad only at the
+    tail. The matcher must trim the span to the brand-bearing region instead of
+    cutting the content.
+    """
+
+    def _overcut_segments(self):
+        # 0-360s show content (no brand), then the real Hims ad at 360-420s.
+        segs = [
+            {'start': i * 30.0, 'end': (i + 1) * 30.0,
+             'text': 'the knicks parade basketball debate ring talk'}
+            for i in range(12)
+        ]
+        segs.append({'start': 360.0, 'end': 390.0,
+                     'text': 'salute to Hims dot com when thinning hair starts'})
+        segs.append({'start': 390.0, 'end': 420.0,
+                     'text': 'go to Hims dot com slash idiots for your free trial'})
+        return segs
+
+    def test_trims_overcut_span_to_brand_region(self):
+        matcher = _make_bare_matcher()
+        match = TextMatch(pattern_id=1, start=0.0, end=420.0, confidence=0.9,
+                          sponsor='Hims', match_type='both')
+        result = matcher._constrain_overlong_spans([match], self._overcut_segments())
+        assert len(result) == 1
+        # Start pulled forward to the first Hims-bearing segment; content kept.
+        assert result[0].start == 360.0
+        assert result[0].end == 420.0
+
+    def test_brand_substring_in_content_does_not_block_trim(self):
+        # Leading content contains 'whims' -- a substring of 'Hims' but not a
+        # whole word. Word-boundary matching must ignore it so the span still
+        # trims to the real ad, not the content.
+        matcher = _make_bare_matcher()
+        segs = [{'start': i * 30.0, 'end': (i + 1) * 30.0,
+                 'text': 'the whims of the knicks parade and minor things'}
+                for i in range(12)]  # 360s, 'whims' substring-matches 'Hims'
+        segs.append({'start': 360.0, 'end': 390.0,
+                     'text': 'salute to Hims dot com when thinning hair starts'})
+        segs.append({'start': 390.0, 'end': 420.0,
+                     'text': 'go to Hims dot com slash idiots for your free trial'})
+        match = TextMatch(pattern_id=1, start=0.0, end=420.0, confidence=0.9,
+                          sponsor='Hims', match_type='both')
+        result = matcher._constrain_overlong_spans([match], segs)
+        assert len(result) == 1
+        assert result[0].start == 360.0
+        assert result[0].end == 420.0
+
+    def test_drops_long_span_with_no_brand(self):
+        matcher = _make_bare_matcher()
+        segs = [{'start': i * 30.0, 'end': (i + 1) * 30.0,
+                 'text': 'pure show content basketball'} for i in range(12)]  # 360s
+        match = TextMatch(pattern_id=1, start=0.0, end=360.0, confidence=0.9,
+                          sponsor='Hims', match_type='content')
+        assert matcher._constrain_overlong_spans([match], segs) == []
+
+    def test_short_span_untouched_even_without_brand(self):
+        matcher = _make_bare_matcher()
+        segs = [{'start': 0.0, 'end': 60.0, 'text': 'some content no brand'}]
+        match = TextMatch(pattern_id=1, start=0.0, end=60.0, confidence=0.9,
+                          sponsor='Hims', match_type='content')
+        result = matcher._constrain_overlong_spans([match], segs)
+        assert len(result) == 1
+        assert (result[0].start, result[0].end) == (0.0, 60.0)
+
+    def test_sponsorless_long_span_dropped(self):
+        # No sponsor to anchor the trim, and the span is over the cap: drop it
+        # rather than clamp to a guessed window that could cut show content.
+        matcher = _make_bare_matcher()
+        segs = [{'start': i * 30.0, 'end': (i + 1) * 30.0, 'text': 'content'}
+                for i in range(20)]  # 600s
+        match = TextMatch(pattern_id=1, start=0.0, end=600.0, confidence=0.9,
+                          sponsor=None, match_type='content')
+        assert matcher._constrain_overlong_spans([match], segs) == []
+
+    def test_sponsorless_span_at_cap_untouched(self):
+        # A sponsorless span exactly at the cap is kept unchanged (the cap is
+        # inclusive); only spans strictly over it are dropped.
+        matcher = _make_bare_matcher()
+        segs = [{'start': 0.0, 'end': MAX_MATCH_DURATION, 'text': 'content'}]
+        match = TextMatch(pattern_id=1, start=0.0, end=MAX_MATCH_DURATION,
+                          confidence=0.9, sponsor=None, match_type='content')
+        result = matcher._constrain_overlong_spans([match], segs)
+        assert len(result) == 1
+        assert (result[0].start, result[0].end) == (0.0, MAX_MATCH_DURATION)
+
+
+class TestMergeSponsorGating:
+    """Merge must not union different sponsors (would let one sponsor's bad
+    anchor drag another's span and hide a co-located ad behind one label)."""
+
+    def test_different_sponsors_not_merged(self):
+        matcher = _make_bare_matcher()
+        m1 = TextMatch(pattern_id=1, start=100.0, end=160.0, confidence=0.9,
+                       sponsor='Hims', match_type='content')
+        m2 = TextMatch(pattern_id=2, start=162.0, end=220.0, confidence=0.9,
+                       sponsor='Quince', match_type='content')
+        result = matcher._merge_matches([m1, m2])
+        assert len(result) == 2
+        assert {r.sponsor for r in result} == {'Hims', 'Quince'}
+
+    def test_same_sponsor_merged(self):
+        matcher = _make_bare_matcher()
+        m1 = TextMatch(pattern_id=1, start=100.0, end=160.0, confidence=0.8,
+                       sponsor='Hims', match_type='content')
+        m2 = TextMatch(pattern_id=1, start=162.0, end=220.0, confidence=0.9,
+                       sponsor='Hims', match_type='intro')
+        result = matcher._merge_matches([m1, m2])
+        assert len(result) == 1
+        assert (result[0].start, result[0].end) == (100.0, 220.0)
+
+    def test_unattributed_match_not_merged_into_named_ad(self):
+        # A brand-free (sponsor=None) content match must not absorb an adjacent
+        # named ad and inherit its sponsor -- that lets content ride along as ad
+        # in a span too short for the over-long trim to catch.
+        matcher = _make_bare_matcher()
+        m1 = TextMatch(pattern_id=1, start=100.0, end=160.0, confidence=0.8,
+                       sponsor=None, match_type='content')
+        m2 = TextMatch(pattern_id=2, start=162.0, end=220.0, confidence=0.9,
+                       sponsor='Hims', match_type='intro')
+        result = matcher._merge_matches([m1, m2])
+        assert len(result) == 2
+
+    def test_case_variant_sponsors_merged(self):
+        matcher = _make_bare_matcher()
+        m1 = TextMatch(pattern_id=1, start=100.0, end=160.0, confidence=0.8,
+                       sponsor='Hims', match_type='content')
+        m2 = TextMatch(pattern_id=2, start=162.0, end=220.0, confidence=0.9,
+                       sponsor='hims', match_type='intro')
+        result = matcher._merge_matches([m1, m2])
+        assert len(result) == 1
