@@ -151,7 +151,7 @@ function CueCandidatesSection({
     >
       <p className="text-sm text-muted-foreground mb-3">
         Scan the audio for sounds that repeat across the episode -- the kind worth
-        templating. One-off loud moments are skipped.
+        templating. One-off sounds are skipped.
       </p>
 
       {!scanned && (
@@ -215,9 +215,6 @@ function CueCandidatesSection({
                     <span className="px-1.5 py-0.5 text-xs rounded font-medium bg-blue-500/20 text-blue-600 dark:text-blue-400">
                       Repeats {c.count}x
                     </span>
-                    {c.prominenceDb != null && (
-                      <span className="text-xs text-muted-foreground">{c.prominenceDb.toFixed(1)} dB</span>
-                    )}
                   </div>
                   <button
                     onClick={() => makeTemplate(c.start, c.end)}
