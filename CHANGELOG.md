@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.20.0] - 2026-06-23
+
+### Added
+
+- The settings page has a search box. As the page has grown it got harder to find a specific toggle, so there is now a filter at the top (above Appearance, below the processing queue) that narrows the page as you type. It matches a section's title or any of the setting labels inside it, hides the rest, and expands what is left; clearing it puts everything back. Client-side only, no backend calls. Thanks to the request in #416.
+
+### Changed
+
+- The "Find cue candidates" scan's similarity floor dropped from 0.75 to 0.73. On a real ad-break sting whose occurrences vary a little (codec or level jitter), one or two copies were landing just under 0.75 and getting dropped from the count; 0.73 catches them. A threshold sweep showed 0.72 to 0.75 behave the same on a clean episode and 0.70 is a noise cliff (the candidate list triples and a non-ad sound nearly ties the real sting), so 0.73 is the headroom without the noise.
+
 ## [2.19.0] - 2026-06-22
 
 ### Changed
