@@ -215,8 +215,12 @@ AUDIO_CUE_PAIR_MAX_BREAK_FRACTION = 0.5
 # MIN_COUNT times (loudness-independent, so it catches level-matched stings the
 # old loudness-gated pass missed). SIMILARITY is the per-window fingerprint
 # bit-similarity (0-1, higher = stricter) two occurrences must reach to count as
-# the same sound.
-AUDIO_CUE_RECURRENCE_SIMILARITY = 0.75   # fingerprint bit-similarity to call two windows the same sound
+# the same sound. 0.73 from a threshold sweep on real ad-break stings: 0.72-0.75
+# behave identically on a clean episode, but a recurring sting whose occurrences
+# vary more (codec/level jitter) can land just under 0.75 and be under-counted,
+# so 0.73 buys headroom; 0.70 is a noise cliff (the candidate list triples and a
+# non-ad cluster nearly ties the real sting), so do not go below ~0.72.
+AUDIO_CUE_RECURRENCE_SIMILARITY = 0.73   # fingerprint bit-similarity to call two windows the same sound
 AUDIO_CUE_RECURRENCE_MIN_COUNT = 3       # minimum occurrences to suggest a sound
 # Fingerprint self-repeat discovery internals (candidate scan). The probe window
 # seeds LSH buckets; each bucket's first member anchors a full self-scan whose

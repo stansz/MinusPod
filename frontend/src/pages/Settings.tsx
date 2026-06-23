@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSyncFromQuery } from '../hooks/useSyncFromQuery';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -37,9 +37,14 @@ import ExperimentsSection from './settings/ExperimentsSection';
 import AudioCueDetectionSection from './settings/AudioCueDetectionSection';
 import PositionalPriorSection from './settings/PositionalPriorSection';
 import CommunityPatternsSection from './settings/CommunityPatternsSection';
+import { Search, X } from 'lucide-react';
+import { SettingsSearchContext, useSettingsSearch } from '../context/SettingsSearchContext';
 import { formatModelLabel } from './settings/settingsUtils';
 
 function SettingsGroupHeader({ title }: { title: string }) {
+  // During an active settings search the group labels are noise (sections are
+  // filtered individually), so hide them and let the matching cards stand alone.
+  if (useSettingsSearch() !== null) return null;
   return (
     <div className="pt-4 pb-1">
       <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -92,6 +97,31 @@ function Settings() {
     pairMaxBreakFraction: 0.5,
   });
   const [positionalPriorEnabled, setPositionalPriorEnabled] = useState(false);
+  const [settingsQuery, setSettingsQuery] = useState('');
+  // null = no active search; otherwise the set of matching section keys.
+  // Computed in the event handler (the lint forbids ref reads in render and
+  // setState in effects); hidden sections keep their textContent, so each
+  // keystroke can rescan every section.
+  const [settingsMatchKeys, setSettingsMatchKeys] = useState<Set<string> | null>(null);
+  const searchRegionRef = useRef<HTMLDivElement>(null);
+  const runSettingsSearch = (q: string) => {
+    setSettingsQuery(q);
+    const norm = q.trim().toLowerCase();
+    if (!norm) {
+      setSettingsMatchKeys(null);
+      return;
+    }
+    // Scope the scan to the searchable region so the two sections above the
+    // search box (System Status, Processing Queue) don't count toward matches.
+    const matches = new Set<string>();
+    searchRegionRef.current?.querySelectorAll<HTMLElement>('[data-search-key]').forEach((el) => {
+      if ((el.textContent ?? '').toLowerCase().includes(norm)) {
+        const key = el.getAttribute('data-search-key');
+        if (key) matches.add(key);
+      }
+    });
+    setSettingsMatchKeys(matches);
+  };
   const [selectedModel, setSelectedModel] = useState('');
   const [verificationModel, setVerificationModel] = useState('');
   const [whisperModel, setWhisperModel] = useState('');
@@ -584,6 +614,39 @@ function Settings() {
         cancelIsPending={cancelMutation.isPending}
       />
 
+      {/* Settings search: filters the configurable sections below by matching a
+          section's title or any of its setting labels (client-side, no backend). */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={settingsQuery}
+          onChange={(e) => runSettingsSearch(e.target.value)}
+          placeholder="Search settings..."
+          aria-label="Search settings"
+          className="w-full rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground pl-9 pr-9 py-2 focus:outline-hidden focus:ring-2 focus:ring-ring"
+        />
+        {settingsQuery && (
+          <button
+            type="button"
+            onClick={() => runSettingsSearch('')}
+            aria-label="Clear settings search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground touch-manipulation"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      <SettingsSearchContext.Provider value={settingsMatchKeys}>
+      <div ref={searchRegionRef} className="space-y-4">
+
+      {settingsMatchKeys !== null && settingsMatchKeys.size === 0 && (
+        <p className="text-sm text-muted-foreground px-1">
+          No settings match "{settingsQuery.trim()}".
+        </p>
+      )}
+
       <SettingsGroupHeader title="Appearance" />
 
       <AppearanceSection />
@@ -790,6 +853,9 @@ function Settings() {
         cryptoReady={providersState?.cryptoReady ?? false}
         plaintextSecretsCount={status?.security?.plaintextSecretsCount ?? 0}
       />
+
+      </div>
+      </SettingsSearchContext.Provider>
 
       {/* Error display */}
       {(updateMutation.error || resetMutation.error || resetPromptsMutation.error) && (
