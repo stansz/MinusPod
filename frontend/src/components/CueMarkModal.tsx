@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import WaveSurfer from 'wavesurfer.js';
 import { usePeaks } from './ad-editor/usePeaks';
@@ -6,6 +6,7 @@ import { Pin } from './ad-editor/Pin';
 import { snapToOnset } from './ad-editor/snapToOnset';
 import TransportBar from './ad-editor/TransportBar';
 import ZoomControl from './ad-editor/ZoomControl';
+import { useWaveformWindow } from './ad-editor/useWaveformWindow';
 import { primaryBtn, ctrlBtn } from './ad-editor/controlStyles';
 import {
   formatTime,
@@ -98,22 +99,17 @@ function CueMarkModal({
     () => captureMaxForType(cueType, captureMaxSeconds, captureMaxIntroSeconds, captureMaxOutroSeconds),
     [cueType, captureMaxSeconds, captureMaxIntroSeconds, captureMaxOutroSeconds],
   );
-  const [zoom, setZoom] = useState(1);
-  // Windowed rendering: zoom narrows the rendered time-span (kept to about one
-  // screen-width at any zoom) instead of widening a giant canvas. wavesurfer
-  // caps its render at ~16000px and leaves everything past that blank, so the
-  // old "whole episode, zoom widens the canvas" approach went blank at the far
-  // end. At 1x the window is the whole episode. Deferred so dragging the zoom
-  // slider / scrubber stays responsive while the windowed peaks re-fetch.
-  const [windowCenter, setWindowCenter] = useState(() => (defaults.cueStart + defaults.cueEnd) / 2);
-  const deferredZoom = useDeferredValue(zoom);
-  const deferredCenter = useDeferredValue(windowCenter);
-  const { windowStart, windowEnd } = useMemo(() => {
-    const winDur = Math.min(totalDuration, Math.max(0.5, totalDuration / Math.max(1, deferredZoom)));
-    let start = Math.max(0, Math.min(totalDuration - winDur, deferredCenter - winDur / 2));
-    if (!Number.isFinite(start)) start = 0;
-    return { windowStart: start, windowEnd: start + winDur };
-  }, [deferredZoom, deferredCenter, totalDuration]);
+  // Windowed zoom, shared with the ad editor (issue #350): zoom narrows the
+  // rendered span around the playhead instead of widening a giant canvas (which
+  // wavesurfer blanks past ~16000px). The playhead ref lets a zoom recenter on
+  // the cursor without re-running the RAF loop.
+  const playheadRef = useRef(0);
+  const {
+    zoom, setZoom, zoomIn, zoomOut, windowStart, windowEnd, windowCenter, setWindowCenter,
+  } = useWaveformWindow(
+    totalDuration, (defaults.cueStart + defaults.cueEnd) / 2, playheadRef,
+    ZOOM_MIN, ZOOM_MAX,
+  );
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [snapEnabled, setSnapEnabled] = useState(true);
@@ -341,6 +337,7 @@ function CueMarkModal({
       if (audio && cursor) {
         const t = audio.currentTime;
         setPlayheadTime(t);
+        playheadRef.current = t;
         const rel = (t - windowStart) / windowDuration;
         if (rel >= 0 && rel <= 1) {
           cursor.style.left = `${rel * 100}%`;
@@ -737,9 +734,9 @@ function CueMarkModal({
           min={ZOOM_MIN}
           max={ZOOM_MAX}
           step={1}
-          onChange={setZoom}
-          onZoomIn={() => setZoom((z) => Math.min(ZOOM_MAX, +(z * 1.5).toFixed(2)))}
-          onZoomOut={() => setZoom((z) => Math.max(ZOOM_MIN, +(z / 1.5).toFixed(2)))}
+          onChange={(z) => setZoom(z)}
+          onZoomIn={zoomIn}
+          onZoomOut={zoomOut}
         />
 
         {/* Playback transport -- shared with the "Add new ad" editor. */}
