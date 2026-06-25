@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import WaveSurfer from 'wavesurfer.js';
 import { usePeaks } from './ad-editor/usePeaks';
+import { usePeakSlice } from './ad-editor/usePeakSlice';
 import { Pin } from './ad-editor/Pin';
 import { snapToOnset } from './ad-editor/snapToOnset';
 import TransportBar from './ad-editor/TransportBar';
@@ -103,7 +104,9 @@ function CueMarkModal({
   // rendered span around the playhead instead of widening a giant canvas (which
   // wavesurfer blanks past ~16000px). The playhead ref lets a zoom recenter on
   // the cursor without re-running the RAF loop.
-  const playheadRef = useRef(0);
+  // Seed the playhead at the initial view center so a zoom BEFORE playback
+  // (when audio.currentTime is still 0) recenters on the cue, not episode start.
+  const playheadRef = useRef((defaults.cueStart + defaults.cueEnd) / 2);
   const {
     zoom, setZoom, zoomIn, zoomOut, windowStart, windowEnd, windowCenter, setWindowCenter,
   } = useWaveformWindow(
@@ -160,14 +163,7 @@ function CueMarkModal({
   const windowDuration = Math.max(0.001, windowEnd - windowStart);
 
   // Peaks for just the visible window (a slice of the full-episode peaks).
-  const windowPeaks = useMemo(() => {
-    if (!peaks) return null;
-    const bucket = peakResolutionMs / 1000;
-    if (!(bucket > 0)) return peaks;
-    const startIdx = Math.max(0, Math.floor(windowStart / bucket));
-    const endIdx = Math.min(peaks.length, Math.ceil(windowEnd / bucket));
-    return endIdx > startIdx ? peaks.slice(startIdx, endIdx) : peaks;
-  }, [peaks, peakResolutionMs, windowStart, windowEnd]);
+  const windowPeaks = usePeakSlice(peaks, peakResolutionMs, windowStart, windowEnd);
 
   // Close on Escape, matching the rest of the app's modal behaviour.
   useEffect(() => {
@@ -196,7 +192,7 @@ function CueMarkModal({
     // Recenter the rendered window on the jump target so it stays visible when
     // zoomed in (a no-op at 1x where the window is the whole episode).
     setWindowCenter(clamped);
-  }, [totalDuration]);
+  }, [totalDuration, setWindowCenter]);
 
   // Full-episode scrubber: drag to pan the zoomed window across the episode.
   const panToClientX = useCallback((clientX: number) => {
@@ -205,7 +201,7 @@ function CueMarkModal({
     const rect = el.getBoundingClientRect();
     const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     setWindowCenter(frac * totalDuration);
-  }, [totalDuration]);
+  }, [totalDuration, setWindowCenter]);
   const onScrubberPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     panToClientX(e.clientX);

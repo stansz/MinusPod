@@ -39,8 +39,11 @@ export function useWaveformWindow(
   playheadRef: MutableRefObject<number>,
   zoomMin = 1,
   zoomMax = 50,
+  initialZoom = 1,
 ): WaveformWindow {
-  const [zoom, setZoomRaw] = useState(1);
+  const [zoom, setZoomRaw] = useState(() =>
+    Math.max(zoomMin, Math.min(zoomMax, initialZoom)),
+  );
   const [windowCenter, setWindowCenter] = useState(initialCenter);
   const deferredZoom = useDeferredValue(zoom);
   const deferredCenter = useDeferredValue(windowCenter);
@@ -55,33 +58,24 @@ export function useWaveformWindow(
     return { windowStart: start, windowEnd: start + winDur };
   }, [deferredZoom, deferredCenter, totalDuration]);
 
-  const clampZoom = useCallback(
-    (z: number) => Math.max(zoomMin, Math.min(zoomMax, z)),
-    [zoomMin, zoomMax],
-  );
-
-  const anchor = useCallback(
-    (anchorTime?: number) => {
-      const t = anchorTime ?? playheadRef.current;
-      if (Number.isFinite(t)) setWindowCenter(t);
-    },
-    [playheadRef],
-  );
-
+  // Recenter on the anchor time (the live playhead unless an explicit time is
+  // given, e.g. the cursor for wheel-zoom) so it stays put through the zoom.
   const setZoom = useCallback(
     (z: number, anchorTime?: number) => {
-      anchor(anchorTime);
-      setZoomRaw(clampZoom(z));
+      const t = anchorTime ?? playheadRef.current;
+      if (Number.isFinite(t)) setWindowCenter(t);
+      setZoomRaw(Math.max(zoomMin, Math.min(zoomMax, z)));
     },
-    [anchor, clampZoom],
+    [zoomMin, zoomMax, playheadRef],
   );
 
   const zoomBy = useCallback(
     (factor: number, anchorTime?: number) => {
-      anchor(anchorTime);
-      setZoomRaw((z) => clampZoom(+(z * factor).toFixed(2)));
+      const t = anchorTime ?? playheadRef.current;
+      if (Number.isFinite(t)) setWindowCenter(t);
+      setZoomRaw((z) => Math.max(zoomMin, Math.min(zoomMax, +(z * factor).toFixed(2))));
     },
-    [anchor, clampZoom],
+    [zoomMin, zoomMax, playheadRef],
   );
 
   const zoomIn = useCallback(() => zoomBy(1.5), [zoomBy]);
