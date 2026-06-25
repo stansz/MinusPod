@@ -1315,8 +1315,14 @@ def _run_verification_pass(ctx, processed_path, pass1_cuts,
 
 
 def _generate_assets(slug, episode_id, segments, all_cuts, episode_description,
-                      podcast_name, episode_title):
-    """Pipeline stage: Generate VTT transcript and chapters."""
+                      podcast_name, episode_title, regenerate_chapters=True):
+    """Pipeline stage: Generate VTT transcript and chapters.
+
+    regenerate_chapters=False skips the chapter step, whose topic-boundary
+    detection is the one LLM call here. Recut uses it to stay AI-free; the
+    existing chapters are left in place and can be refreshed with the manual
+    Regenerate Chapters action.
+    """
     from transcript_generator import TranscriptGenerator
     from chapters_generator import ChaptersGenerator
     try:
@@ -1339,7 +1345,9 @@ def _generate_assets(slug, episode_id, segments, all_cuts, episode_description,
             db.save_episode_details(slug, episode_id, transcript_text=processed_text)
 
         chapters_enabled = db.get_setting('chapters_enabled')
-        if chapters_enabled is None or chapters_enabled.lower() == 'true':
+        if not regenerate_chapters:
+            audio_logger.info(f"[{slug}:{episode_id}] Skipping chapter regeneration (no AI call)")
+        elif chapters_enabled is None or chapters_enabled.lower() == 'true':
             chapters_gen = ChaptersGenerator()
             clear_fallback(episode_id, PASS_CHAPTER_GENERATION)
             chapters = chapters_gen.generate_chapters(
@@ -1705,8 +1713,12 @@ def _recut_episode(slug, episode_id, episode_title, podcast_name,
         shutil.move(processed_path, final_path)
 
         status_service.update_job_stage("recut:assets", 85)
+        # Skip chapter regeneration: its topic-boundary detection is an LLM call,
+        # and recut is meant to be AI-free. Existing chapters stay; the user can
+        # refresh them with the manual Regenerate Chapters action.
         _generate_assets(slug, episode_id, segments, applied_cuts,
-                          episode_description, podcast_name, episode_title)
+                          episode_description, podcast_name, episode_title,
+                          regenerate_chapters=False)
 
         pass1_cut_count = sum(
             1 for ad in ads_to_remove

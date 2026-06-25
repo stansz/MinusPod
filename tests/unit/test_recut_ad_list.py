@@ -134,3 +134,35 @@ def test_build_recut_ad_list_keeps_manual_add(monkeypatch):
 def test_build_recut_ad_list_empty_when_no_markers(monkeypatch):
     monkeypatch.setattr(processing.db, 'get_episode', lambda s, e: {'ad_markers_json': None})
     assert processing._build_recut_ad_list('slug', 'ep', [], 600.0, '', 0.80) == ([], [])
+
+
+def _stub_assets_io(monkeypatch, counters):
+    import chapters_generator
+    monkeypatch.setattr(chapters_generator.ChaptersGenerator, 'generate_chapters',
+                        lambda self, *a, **k: counters.__setitem__('chapters', counters.get('chapters', 0) + 1) or {'chapters': []})
+    monkeypatch.setattr(processing.db, 'get_setting', lambda k: 'true')
+    monkeypatch.setattr(processing.storage, 'save_final_segments', lambda *a, **k: None)
+    monkeypatch.setattr(processing.storage, 'save_transcript_vtt', lambda *a, **k: None)
+    monkeypatch.setattr(processing.storage, 'save_chapters_json',
+                        lambda *a, **k: counters.__setitem__('save_chapters', counters.get('save_chapters', 0) + 1))
+    monkeypatch.setattr(processing.db, 'save_episode_details', lambda *a, **k: None)
+
+
+def test_generate_assets_skips_chapters_when_disabled(monkeypatch):
+    # Recut path: no AI chapter call, no chapter write.
+    counters = {}
+    _stub_assets_io(monkeypatch, counters)
+    segments = [{'start': 0.0, 'end': 30.0, 'text': 'hello world'}]
+    processing._generate_assets('slug', 'ep', segments, [], '', 'Pod', 'Title',
+                                regenerate_chapters=False)
+    assert counters.get('chapters', 0) == 0
+    assert counters.get('save_chapters', 0) == 0
+
+
+def test_generate_assets_generates_chapters_by_default(monkeypatch):
+    # Main pipeline path: chapters still generated.
+    counters = {}
+    _stub_assets_io(monkeypatch, counters)
+    segments = [{'start': 0.0, 'end': 30.0, 'text': 'hello world'}]
+    processing._generate_assets('slug', 'ep', segments, [], '', 'Pod', 'Title')
+    assert counters.get('chapters', 0) == 1
