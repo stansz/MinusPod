@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.24.0] - 2026-06-26
+
+### Added
+
+- Previous/next episode controls on the episode page, next to "Back to Feed". They follow the feed's newest-first order -- right goes to the older episode, left to the newer one -- so you can move between adjacent episodes without going back to the feed list (issue #417).
+- An optional MinusPod badge on served cover art. Turn it on under Settings -> Output -> Cover Art and the feed's channel art gets a small badge in the bottom-right corner, so the filtered version is easy to tell apart from the original in a podcast app. Off by default (issue #420).
+
 ## [2.23.1] - 2026-06-26
 
 ### Added

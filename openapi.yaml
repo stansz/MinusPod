@@ -12,7 +12,7 @@ info:
     - Monitor system status and trigger cleanup operations
     - Manage cross-episode ad patterns with network and podcast scope
     - Submit corrections to improve ad detection accuracy
-  version: 2.23.1
+  version: 2.24.0
   contact:
     name: MinusPod
   license:
@@ -614,6 +614,13 @@ paths:
       operationId: getFeedArtwork
       parameters:
         - $ref: '#/components/parameters/slug'
+        - name: minuspod
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['1', 'true', 'yes']
+          description: When set, returns the cover art with the MinusPod badge overlaid in the bottom-right corner (issue #420). The served feed points its channel image here when the artworkWatermarkEnabled setting is on.
       responses:
         '200':
           description: Artwork image
@@ -3094,6 +3101,9 @@ paths:
                 onlyExposeProcessedDefault:
                   type: boolean
                   description: Global default for hiding upstream episodes whose status is not 'processed' from served RSS feeds. Overridden by per-feed onlyExposeProcessedEpisodes when set.
+                artworkWatermarkEnabled:
+                  type: boolean
+                  description: When true, the served feed's channel cover art gets a MinusPod badge overlaid so the filtered feed is distinct in a podcast app (issue #420). Off by default.
                 minCutConfidence:
                   type: number
                   format: float
@@ -5572,6 +5582,26 @@ components:
             processedUrl:
               type: string
               format: uri
+            navigation:
+              type: object
+              description: Adjacent episodes in the same feed, newest-first order. previous is the newer episode, next the older; either is null at a feed boundary (issue #417).
+              properties:
+                previous:
+                  type: object
+                  nullable: true
+                  properties:
+                    id:
+                      type: string
+                    title:
+                      type: string
+                next:
+                  type: object
+                  nullable: true
+                  properties:
+                    id:
+                      type: string
+                    title:
+                      type: string
             adMarkers:
               type: array
               description: Ads that were removed from audio (ACCEPT or REVIEW decision)
@@ -6135,6 +6165,14 @@ components:
               description: Global default for hiding non-processed episodes from served feeds (per-feed onlyExposeProcessedEpisodes overrides when set)
             isDefault:
               type: boolean
+        artworkWatermarkEnabled:
+          type: object
+          properties:
+            value:
+              type: boolean
+              description: When true, overlays a MinusPod badge on the served feed's channel cover art (issue #420). Off by default.
+            isDefault:
+              type: boolean
         minCutConfidence:
           type: object
           properties:
@@ -6252,6 +6290,8 @@ components:
             maxFeedEpisodes:
               type: integer
             onlyExposeProcessedDefault:
+              type: boolean
+            artworkWatermarkEnabled:
               type: boolean
             minCutConfidence:
               type: number
