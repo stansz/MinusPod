@@ -80,7 +80,7 @@ def test_refresh_feed_artwork_rebuilds_served_rss_with_badge():
          patch.object(mf.storage, 'download_artwork', return_value=True):
         assert mf.refresh_feed_artwork(slug) is True
     served = mf.storage.get_rss(slug)
-    assert f'/episodes/{slug}/cover-minuspod.jpg' in served
+    assert f'/{slug}/cover-minuspod.jpg' in served
     assert 'https://example.com/art.png' not in served
 
 

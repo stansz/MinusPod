@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.2] - 2026-06-27
+
+### Fixed
+
+- The badged cover art is served from a podcast-level path, `/<slug>/cover-minuspod.jpg`, and the feed points its channel image there. It was under `/episodes/<slug>/`, which read as episode-scoped and which Pocket Casts did not pick up after the badge changed, since it caches channel art by URL and re-fetches only when the URL changes. The new URL makes apps re-fetch. The old `/episodes/<slug>/cover-minuspod.jpg` path stays as an alias so apps that cached it keep working. Per-episode covers are unchanged and still come from the source feed.
+
 ## [2.25.1] - 2026-06-26
 
 ### Fixed
