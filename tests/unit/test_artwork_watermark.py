@@ -175,7 +175,7 @@ def test_feed_points_at_badge_endpoint_when_enabled_and_cached():
     st.save_artwork(slug, _png(), 'image/png', 'https://example.com/art.png')
 
     served = _serve(slug, watermark=True)
-    assert f'https://mp.example.com/episodes/{slug}/cover-minuspod.jpg' in served
+    assert f'https://mp.example.com/{slug}/cover-minuspod.jpg' in served
     assert 'https://example.com/art.png' not in served
 
 

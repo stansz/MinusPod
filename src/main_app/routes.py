@@ -463,15 +463,17 @@ def register_routes(app):
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response
 
+    @app.route('/<slug>/cover-minuspod.jpg')
     @app.route('/episodes/<slug>/cover-minuspod.jpg')
     @validate_slug_param
     @log_request_detailed
     def serve_minuspod_cover(slug):
-        """Serve the MinusPod-badged cover art (issue #420). Lives under the
-        public /episodes/ prefix the feed host already serves, so podcast apps
-        can fetch it -- the /api/v1 artwork endpoint is blocked by that host's
-        proxy. The served feed points its channel image here when the watermark
-        setting is on."""
+        """Serve the MinusPod-badged cover art (issue #420). This is podcast-level
+        artwork, so the served feed points its channel image at the podcast-level
+        path /<slug>/cover-minuspod.jpg when the watermark setting is on. The
+        older /episodes/<slug>/cover-minuspod.jpg path stays as a back-compat
+        alias for apps that cached the previous URL. Both are public paths the
+        feed host forwards."""
         result = storage.get_watermarked_artwork(slug)
         if not result:
             abort(404)

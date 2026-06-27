@@ -52,6 +52,7 @@ def test_traversal_slug_never_returns_200(client, slug):
     for path in (
         f"/api/v1/feeds/{slug}/artwork",
         f"/episodes/{slug}/cover-minuspod.jpg",
+        f"/{slug}/cover-minuspod.jpg",
     ):
         response = client.get(path)
         assert response.status_code < 200 or response.status_code >= 300
@@ -131,6 +132,21 @@ def test_minuspod_cover_serves_badged_jpeg(client):
     st.save_artwork(slug, _png_bytes(), 'image/png', 'https://example.com/a.png')
 
     response = client.get(f'/episodes/{slug}/cover-minuspod.jpg')
+    assert response.status_code == 200
+    assert response.mimetype == 'image/jpeg'
+    assert response.headers.get('Access-Control-Allow-Origin') == '*'
+
+
+def test_minuspod_cover_podcast_level_path_serves_badged_jpeg(client):
+    """The podcast-level /<slug>/cover-minuspod.jpg route (2.25.2) serves the same
+    badged cover; the feed points its channel image here, and the /episodes/ path
+    stays as a back-compat alias."""
+    slug = 'cover-podcast-path'
+    st = routes_mod.storage
+    st.db.create_podcast(slug, f'https://example.com/{slug}.xml', slug)
+    st.save_artwork(slug, _png_bytes(), 'image/png', 'https://example.com/a.png')
+
+    response = client.get(f'/{slug}/cover-minuspod.jpg')
     assert response.status_code == 200
     assert response.mimetype == 'image/jpeg'
     assert response.headers.get('Access-Control-Allow-Origin') == '*'
