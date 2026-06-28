@@ -12,7 +12,7 @@ info:
     - Monitor system status and trigger cleanup operations
     - Manage cross-episode ad patterns with network and podcast scope
     - Submit corrections to improve ad detection accuracy
-  version: 2.27.1
+  version: 2.27.2
   contact:
     name: MinusPod
   license:
@@ -5111,13 +5111,14 @@ paths:
       tags: [AudioCueTemplates]
       summary: Find cue-template candidates in an episode
       description: |
-        On-demand scan combining recurring sounds (fingerprint self-repeat) with
-        one-off loud spots (intros/outros/bumpers that play once), so candidates
-        cover all cue types, not just repeated sounds. Each candidate carries a
-        `kind` and a positional `suggestedType` hint. The decode is slow (90s+ on
-        a long episode), so the scan runs in a background thread and the result is
-        cached. Poll this endpoint until `status` is `ready` or `error`. Pass
-        `rescan=1` to force a fresh scan after an error.
+        On-demand scan combining within-episode recurring sounds (fingerprint
+        self-repeat, for ad-break stings) with cross-episode intro/outro segments
+        (head/tail audio shared across recent completed sibling episodes), so
+        candidates cover all cue types. Each candidate carries a `kind` and a
+        `suggestedType` hint. The decode is slow (90s+ on a long episode), so the
+        scan runs in a background thread and the result is cached. Poll this
+        endpoint until `status` is `ready` or `error`. Pass `rescan=1` to force a
+        fresh scan after an error.
       operationId: episodeCueCandidates
       parameters:
         - name: slug
@@ -5139,7 +5140,7 @@ paths:
             enum: ['1', 'true', 'yes']
       responses:
         '200':
-          description: Scan status, with candidates once ready (recurring first, then one-off by prominence)
+          description: Scan status, with candidates once ready (intro/outro first, then recurring by count)
           content:
             application/json:
               schema:
@@ -5167,21 +5168,21 @@ paths:
                           type: number
                         kind:
                           type: string
-                          enum: [recurring, one_off]
-                          description: recurring (fingerprint self-repeat) or one_off (a loud spot)
+                          enum: [recurring, intro, outro]
+                          description: recurring (repeats within the episode), or intro/outro (shared across sibling episodes)
                         count:
                           type: integer
                           nullable: true
-                          description: Recurring candidates only -- times the sound recurs
-                        prominenceDb:
-                          type: number
+                          description: Recurring candidates only -- times the sound recurs within the episode
+                        episodeMatches:
+                          type: integer
                           nullable: true
-                          description: One-off candidates only -- loudness above baseline
+                          description: Intro/outro candidates only -- how many sibling episodes share the segment
                         suggestedType:
                           type: string
                           nullable: true
                           enum: [show_intro, show_outro]
-                          description: Positional cue-type hint for capture (null if none)
+                          description: Capture-type hint (show_intro/show_outro for intro/outro; null for recurring)
         '404':
           description: Feed or original audio not found
 

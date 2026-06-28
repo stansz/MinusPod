@@ -1,73 +1,43 @@
-"""Pure merging of cue-template candidates (recurring + one-off loud spots).
+"""Merge cue-template candidates: within-episode recurrence + cross-episode intro/outro.
 
-Kept free of Flask/DB imports so the candidate-scan worker and unit tests can
-use it directly. The worker (api/cue_templates.py) supplies the two candidate
-lists; this module tags, dedupes, and ranks them.
+Pure -- no Flask/DB imports -- so the candidate-scan worker and unit tests use it
+directly.
 """
-from config import (
-    AUDIO_CUE_INTRO_WINDOW_SECONDS, AUDIO_CUE_OUTRO_WINDOW_SECONDS,
-    AUDIO_CUE_CANDIDATE_MAX_RESULTS,
-    AUDIO_CUE_TYPE_SHOW_INTRO, AUDIO_CUE_TYPE_SHOW_OUTRO,
-)
+from config import AUDIO_CUE_TYPE_SHOW_INTRO, AUDIO_CUE_TYPE_SHOW_OUTRO
 from utils.time import ranges_overlap
 
-
-def candidate_suggested_type(start, end, episode_duration):
-    """Positional cue-type hint for a one-off candidate: intro near the episode
-    start, outro near the end, else none. On a short episode where both windows
-    overlap, the nearer edge wins. A default the capture UI can override."""
-    near_start = start <= AUDIO_CUE_INTRO_WINDOW_SECONDS
-    near_end = (bool(episode_duration)
-                and end >= episode_duration - AUDIO_CUE_OUTRO_WINDOW_SECONDS)
-    if near_start and near_end:
-        return (AUDIO_CUE_TYPE_SHOW_INTRO
-                if start <= episode_duration - end
-                else AUDIO_CUE_TYPE_SHOW_OUTRO)
-    if near_start:
-        return AUDIO_CUE_TYPE_SHOW_INTRO
-    if near_end:
-        return AUDIO_CUE_TYPE_SHOW_OUTRO
-    return None
+_SUGGESTED_TYPE = {
+    'intro': AUDIO_CUE_TYPE_SHOW_INTRO,
+    'outro': AUDIO_CUE_TYPE_SHOW_OUTRO,
+}
 
 
-def _sort_key(c):
-    """Recurring first (most-recurring), then one-offs (most prominent)."""
-    if c['kind'] == 'recurring':
-        return (0, -(c.get('count') or 0))
-    return (1, -(c.get('prominenceDb') or 0.0))
+def merge_cue_candidates(recurring, cross_episode):
+    """Combine within-episode recurrence hits with cross-episode intro/outro hits.
 
-
-def merge_cue_candidates(recurring, loud_spots, episode_duration):
-    """Merge recurrence hits and one-off loud spots into typed candidates.
-
-    A real cue may recur (caught by the fingerprint scan) OR play once -- a show
-    intro/outro/bumper often plays a single time per episode, which the
-    recurrence scan never surfaces. Loud spots fill that gap so candidates cover
-    all cue types, not just repeated sounds. A loud spot overlapping a recurrence
-    hit is dropped (the recurrence hit is the stronger signal). Each candidate is
-    tagged with its kind; one-offs also get a positional cue-type hint (a
-    recurring sound is an ad sting, not an intro/outro). Recurring candidates
-    rank first (by recurrence count), then one-offs (by prominence).
+    ``recurring`` items are ``{start,end,count}`` (ad-break stings that repeat
+    within the episode). ``cross_episode`` items are
+    ``{start,end,kind:'intro'|'outro',episodeMatches}`` (segments that recur across
+    sibling episodes). Returns typed candidates carrying a ``suggestedType`` so the
+    capture tool preselects the cue type. Intro/outro rank first (high-value, typed),
+    then recurring (already in descending recurrence order). A recurring hit that
+    overlaps a cross-episode hit is the same sound surfaced twice, so it is dropped.
     """
     merged = [
         {
+            'start': c['start'], 'end': c['end'], 'kind': c['kind'],
+            'episodeMatches': c.get('episodeMatches'),
+            'suggestedType': _SUGGESTED_TYPE.get(c['kind']),
+        }
+        for c in cross_episode
+    ]
+    merged.extend(
+        {
             'start': c['start'], 'end': c['end'], 'kind': 'recurring',
-            'count': c.get('count'),
-            # A sound that recurs within one episode is an ad-break sting, not a
-            # once-per-episode intro/outro, so it gets no positional hint.
-            'suggestedType': None,
+            'count': c.get('count'), 'suggestedType': None,
         }
         for c in recurring
-    ]
-    for spot in loud_spots:
-        if any(ranges_overlap(spot['start'], spot['end'], r['start'], r['end'])
-               for r in recurring):
-            continue
-        merged.append({
-            'start': spot['start'], 'end': spot['end'], 'kind': 'one_off',
-            'prominenceDb': spot.get('prominenceDb'),
-            'suggestedType': candidate_suggested_type(
-                spot['start'], spot['end'], episode_duration),
-        })
-    merged.sort(key=_sort_key)
-    return merged[:AUDIO_CUE_CANDIDATE_MAX_RESULTS]
+        if not any(ranges_overlap(c['start'], c['end'], x['start'], x['end'])
+                   for x in cross_episode)
+    )
+    return merged

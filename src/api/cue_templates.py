@@ -42,13 +42,19 @@ from config import (
     AUDIO_CUE_FREQ_MAX_HZ,
     AUDIO_CUE_SCAN_FREQ_MIN_HZ, AUDIO_CUE_SCAN_PROMINENCE_DB,
     AUDIO_CUE_SCAN_RELEASE_DB, AUDIO_CUE_SCAN_MAX_DURATION_SECONDS,
-    AUDIO_CUE_CANDIDATE_MAX_LEN_SECONDS,
+    AUDIO_CUE_FP_WINDOW_SECONDS,
+    AUDIO_CUE_XEP_HEAD_SECONDS, AUDIO_CUE_XEP_TAIL_SECONDS,
+    AUDIO_CUE_XEP_MAX_SIBLINGS, AUDIO_CUE_XEP_SIBLING_LOOKBACK,
+    AUDIO_CUE_XEP_MIN_MATCHES,
+    AUDIO_CUE_XEP_MIN_DURATION, AUDIO_CUE_XEP_MAX_DURATION,
+    AUDIO_CUE_XEP_SIMILARITY,
     AUDIO_CUE_RECURRENCE_SIMILARITY, AUDIO_CUE_RECURRENCE_MIN_COUNT,
     AUDIO_CUE_CANDIDATE_SCAN_STALE_SECONDS,
     AUDIO_CUE_TYPES, AUDIO_CUE_TYPE_DEFAULT, AUDIO_CUE_TYPE_SHOW_INTRO,
     AUDIO_CUE_ROLE_NON_AD, audio_cue_type_role,
     is_template_cue,
 )
+from utils.constants import EpisodeStatus
 from utils.validation import is_valid_episode_id
 
 # Cap on loud-spot markers returned to the capture UI.
@@ -697,34 +703,89 @@ def episode_detected_cues(slug, episode_id):
     })
 
 
-def _run_cue_candidate_scan(podcast_id, episode_id, audio_path, similarity,
-                            min_count, episode_duration):
+def _completed_sibling_audio_paths(db, storage, slug, episode_id):
+    """Up to AUDIO_CUE_XEP_MAX_SIBLINGS recent COMPLETED episodes (other than this
+    one) that still have retained original audio, as resolvable file paths.
+
+    Completed-only matters: a finished episode's column value is
+    EpisodeStatus.PROCESSED ('processed'), which the API displays as 'completed'.
+    This excludes discovered/pending/processing/failed episodes from the
+    cross-episode comparison.
+    """
+    episodes, _ = db.get_episodes(
+        slug, status=EpisodeStatus.PROCESSED.value,
+        limit=AUDIO_CUE_XEP_SIBLING_LOOKBACK)
+    paths = []
+    for ep in episodes:
+        eid = ep.get('episode_id')
+        if eid == episode_id or not ep.get('original_file'):
+            continue
+        path = storage.get_original_path(slug, eid)
+        if path.exists():
+            paths.append(str(path))
+        if len(paths) >= AUDIO_CUE_XEP_MAX_SIBLINGS:
+            break
+    return paths
+
+
+def _run_cue_candidate_scan(podcast_id, episode_id, slug, audio_path,
+                            similarity, min_count):
     """Background worker: find cue-template candidates, then persist them.
 
-    Combines two passes: the fingerprint self-repeat scan (recurring sounds,
-    loudness-independent) and the loud-spot energy scan (one-off intros / outros
-    / bumpers the recurrence scan cannot see). Runs off the request thread
-    because decoding a long show can exceed the reverse-proxy timeout. Uses its
-    own thread-local DB connection (the Database singleton hands each thread its
-    own).
+    Two passes: within-episode recurrence (ad-break stings that repeat, found via
+    fingerprint self-match) and cross-episode intro/outro (head/tail segments that
+    recur across recent completed siblings -- real intros/outros play once per
+    episode so recurrence cannot see them). Runs off the request thread because
+    decoding can exceed the reverse-proxy timeout; uses its own thread-local DB
+    connection.
     """
     db = get_database()
+    storage = get_storage()
     try:
-        recurring = AudioFingerprinter().discover_recurring_spots(
-            audio_path, similarity=similarity, min_count=min_count)
+        fp = AudioFingerprinter()
+        # Fingerprint the target once and share it across both passes. If fpcalc
+        # is present but the decode fails, both passes would fail too -- surface
+        # the error instead of re-decoding three times.
+        target_fp = None
+        if fp.is_available():
+            target_fp = fp._generate_full_fingerprint(audio_path)
+            if target_fp is None:
+                raise RuntimeError(f'fingerprint decode failed for {audio_path}')
+        recurring = fp.discover_recurring_spots(
+            audio_path, similarity=similarity, min_count=min_count,
+            target_fingerprint=target_fp)
         try:
-            loud_spots = _scan_loud_spots(
-                db, audio_path, max_duration=AUDIO_CUE_CANDIDATE_MAX_LEN_SECONDS)
+            siblings = _completed_sibling_audio_paths(db, storage, slug, episode_id)
+            cross_episode = fp.discover_cross_episode_cues(
+                audio_path, siblings,
+                head_seconds=AUDIO_CUE_XEP_HEAD_SECONDS,
+                tail_seconds=AUDIO_CUE_XEP_TAIL_SECONDS,
+                window_seconds=AUDIO_CUE_FP_WINDOW_SECONDS,
+                similarity=AUDIO_CUE_XEP_SIMILARITY,
+                min_matches=AUDIO_CUE_XEP_MIN_MATCHES,
+                min_duration=AUDIO_CUE_XEP_MIN_DURATION,
+                max_duration=AUDIO_CUE_XEP_MAX_DURATION,
+                target_fingerprint=target_fp)
         except Exception:
             logger.exception(
-                'loud-spot pass failed for %s/%s; using recurrence only',
-                podcast_id, episode_id)
-            loud_spots = []
-        candidates = merge_cue_candidates(recurring, loud_spots, episode_duration)
+                'cross-episode pass failed for %s/%s; using recurrence only',
+                slug, episode_id)
+            cross_episode = []
+        candidates = merge_cue_candidates(recurring, cross_episode)
         db.save_cue_candidate_scan_result(podcast_id, episode_id, candidates)
     except Exception as e:
         logger.exception('cue candidate scan failed for %s/%s', podcast_id, episode_id)
         db.save_cue_candidate_scan_error(podcast_id, episode_id, str(e))
+
+
+def _candidates_are_current(candidates):
+    """A cached scan from before 2.27.2 used kinds/fields this version no longer
+    emits (one_off / prominenceDb). Treat such rows as stale so they are rescanned
+    rather than rendered with the wrong shape. An empty result is current."""
+    return all(
+        c.get('kind') in ('recurring', 'intro', 'outro') and 'prominenceDb' not in c
+        for c in candidates
+    )
 
 
 @api.route('/feeds/<slug>/episodes/<episode_id>/cue-candidates', methods=['GET'])
@@ -732,10 +793,10 @@ def _run_cue_candidate_scan(podcast_id, episode_id, audio_path, similarity,
 def episode_cue_candidates(slug, episode_id):
     """Find cue-template candidates in an episode (on-demand).
 
-    Combines recurring sounds (fingerprint self-repeat, loudness-independent)
-    with one-off loud spots (intros / outros / bumpers that play once and never
-    recur), so candidates cover all cue types, not just repeated sounds. Each is
-    tagged with a kind and a positional cue-type hint. Decoding a long show can
+    Combines within-episode recurring sounds (fingerprint self-repeat, for ad-break
+    stings) with cross-episode intro/outro segments (head/tail audio shared across
+    recent completed siblings), so candidates cover all cue types. Each is tagged
+    with a kind ('recurring'|'intro'|'outro') and a cue-type hint. Decoding can
     exceed the proxy timeout, so the work runs in a background thread and this
     endpoint returns a status the UI polls: 'scanning', 'ready', or 'error'.
     Pass ?rescan=1 to force a fresh scan.
@@ -755,10 +816,15 @@ def episode_cue_candidates(slug, episode_id):
 
     if state == 'ready':
         row = db.get_cue_candidate_scan(podcast_id, episode_id)
-        return json_response({
-            'episodeId': episode_id, 'status': 'ready',
-            'candidates': json.loads((row or {}).get('candidates_json') or '[]'),
-        })
+        candidates = json.loads((row or {}).get('candidates_json') or '[]')
+        if _candidates_are_current(candidates):
+            return json_response({
+                'episodeId': episode_id, 'status': 'ready', 'candidates': candidates,
+            })
+        # Cached under an older candidate schema (pre-2.27.2 one_off/prominenceDb);
+        # discard and rescan so the UI never renders a stale shape.
+        state = db.claim_cue_candidate_scan(
+            podcast_id, episode_id, AUDIO_CUE_CANDIDATE_SCAN_STALE_SECONDS, force=True)
     if state == 'scanning':
         return json_response({'episodeId': episode_id, 'status': 'scanning', 'candidates': []})
     if state == 'error':
@@ -779,14 +845,9 @@ def episode_cue_candidates(slug, episode_id):
         'audio_cue_recurrence_similarity', AUDIO_CUE_RECURRENCE_SIMILARITY)
     min_count = int(db.get_setting_float(
         'audio_cue_recurrence_min_count', AUDIO_CUE_RECURRENCE_MIN_COUNT))
-    episode = db.get_episode(slug, episode_id)
-    # The episodes table stores original_duration (the original-audio timeline
-    # the candidate scan runs on); there is no plain 'duration' column.
-    episode_duration = (episode or {}).get('original_duration')
     threading.Thread(
         target=_run_cue_candidate_scan,
-        args=(podcast_id, episode_id, audio_path, similarity, min_count,
-              episode_duration),
+        args=(podcast_id, episode_id, slug, audio_path, similarity, min_count),
         daemon=True,
         name=f'cue-candidates-{episode_id}',
     ).start()

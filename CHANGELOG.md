@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.27.2] - 2026-06-28
+
+### Changed
+
+- The "Find audio cues" scan now finds intros and outros by comparing the episode against recent completed episodes, replacing the one-off loud-spot pass added in 2.27.0. That pass surfaced short bursts of loud dialogue rather than cues (on one episode 19 of 20 suggestions were 0.6-to-2.3-second blips), because a real intro or outro plays once per episode and the within-episode recurrence scan cannot see it. The scan now fingerprints the episode's first three minutes and last two minutes and looks for a segment that also appears near the start or end of the five most recent completed episodes; a segment is suggested as an intro or outro only when it recurs in at least two of them. Within-episode recurring stings (ad breaks) are still found and listed alongside.
+
+### Fixed
+
+- A failed dependency install no longer ships a broken image. The Dockerfile ran the pip install and a cache-cleanup step in one chain ending in `|| true`, so a pip failure exited zero and the build succeeded without the dependencies; one such build shipped an image with no gunicorn that crash-looped on deploy. The install is now its own step that fails the build, with the cleanup separated out. Mirrored in the CPU Dockerfile.
+
 ## [2.27.1] - 2026-06-28
 
 ### Changed

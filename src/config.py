@@ -200,21 +200,6 @@ AUDIO_CUE_CAPTURE_MIN_SECONDS = 0.20    # Shortest cue a user may bracket (match
 AUDIO_CUE_CAPTURE_MAX_SECONDS = 10.0    # Longest cue a user may bracket
 AUDIO_CUE_CAPTURE_MAX_INTRO_SECONDS = 60.0  # Longest show-intro stinger a user may bracket
 AUDIO_CUE_CAPTURE_MAX_OUTRO_SECONDS = 60.0  # Longest show-outro stinger a user may bracket
-# Candidate discovery must reach the longest cue any type allows (intro/outro at
-# 60s), not just the 10s ad-break ceiling, or one-off intros/outros never surface
-# at full length. Derived from the per-type ceilings so it tracks them.
-AUDIO_CUE_CANDIDATE_MAX_LEN_SECONDS = max(
-    AUDIO_CUE_CAPTURE_MAX_SECONDS,
-    AUDIO_CUE_CAPTURE_MAX_INTRO_SECONDS,
-    AUDIO_CUE_CAPTURE_MAX_OUTRO_SECONDS,
-)
-# A candidate starting within this of the episode start is hinted show_intro;
-# ending within this of the episode end is hinted show_outro (a UI default the
-# user can override on capture).
-AUDIO_CUE_INTRO_WINDOW_SECONDS = 120.0
-AUDIO_CUE_OUTRO_WINDOW_SECONDS = 120.0
-# Cap on merged candidates (recurring + one-off) returned to the UI.
-AUDIO_CUE_CANDIDATE_MAX_RESULTS = 20
 AUDIO_CUE_PAIR_CONFIDENCE = 0.85        # Min cue confidence to synthesize an ad from a pair
 AUDIO_CUE_PAIR_MIN_BREAK_SECONDS = 30.0   # Shortest plausible cue-pair break
 AUDIO_CUE_PAIR_MAX_BREAK_SECONDS = 480.0  # Longest plausible cue-pair break
@@ -237,6 +222,20 @@ AUDIO_CUE_PAIR_MAX_BREAK_FRACTION = 0.5
 # non-ad cluster nearly ties the real sting), so do not go below ~0.72.
 AUDIO_CUE_RECURRENCE_SIMILARITY = 0.73   # fingerprint bit-similarity to call two windows the same sound
 AUDIO_CUE_RECURRENCE_MIN_COUNT = 3       # minimum occurrences to suggest a sound
+# Cross-episode intro/outro detection (candidate scan). Real intros/outros play
+# once per episode, so within-episode recurrence cannot see them, but they recur
+# ACROSS episodes near the start/end. We fingerprint this episode's head and tail
+# and look for a segment that also appears in the head/tail of recent COMPLETED
+# sibling episodes; a segment is only suggested when it recurs in >= MIN_MATCHES
+# of them, so one-off loud dialogue is never flagged.
+AUDIO_CUE_XEP_HEAD_SECONDS = 180.0     # how much of the episode start to scan for an intro
+AUDIO_CUE_XEP_TAIL_SECONDS = 120.0     # how much of the episode end to scan for an outro
+AUDIO_CUE_XEP_MAX_SIBLINGS = 5         # most recent completed siblings to compare against
+AUDIO_CUE_XEP_SIBLING_LOOKBACK = 30    # completed episodes to scan for ones with retained audio
+AUDIO_CUE_XEP_MIN_MATCHES = 2          # a segment must recur in >= this many siblings
+AUDIO_CUE_XEP_MIN_DURATION = 3.0       # ignore matches shorter than a real intro/outro
+AUDIO_CUE_XEP_MAX_DURATION = 30.0      # cap a suggested intro/outro span
+AUDIO_CUE_XEP_SIMILARITY = AUDIO_CUE_RECURRENCE_SIMILARITY  # bit-similarity threshold for a cross-episode match
 # Fingerprint self-repeat discovery internals (candidate scan). The probe window
 # seeds LSH buckets; each bucket's first member anchors a full self-scan whose
 # segment is then grown to its true length and its whole extent claimed so a long
@@ -246,7 +245,7 @@ AUDIO_CUE_FP_KEY_BITS = 6                # top bits sampled per keyed subfingerp
 AUDIO_CUE_FP_KEY_SAMPLES = 4             # subfingerprints sampled to form an LSH key
 AUDIO_CUE_FP_MIN_GAP_SECONDS = 5.0       # occurrences closer than this are the same instance
 AUDIO_CUE_FP_MAX_COUNT = 30              # >this many repeats is pervasive filler, not a cue
-AUDIO_CUE_FP_MAX_LEN_SECONDS = AUDIO_CUE_CANDIDATE_MAX_LEN_SECONDS  # cap on segment-length extension (intro/outro length)
+AUDIO_CUE_FP_MAX_LEN_SECONDS = 30.0      # cap on segment-length extension
 AUDIO_CUE_FP_MAX_ANCHORS = 600           # cap on anchors scanned (bounds long-episode work)
 AUDIO_CUE_FP_MAX_CANDIDATES = 10         # cap on candidates returned to the UI
 # Generous loudness discovery profile for the capture-UI loud spots (the

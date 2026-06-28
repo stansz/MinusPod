@@ -78,7 +78,9 @@ function CueCandidatesSection({
       staleTime: 0,
     });
 
-  const candidateKey = (c: CueCandidate) => `${c.start}-${c.end}`;
+  // Include kind: an intro and a recurring hit can share start/end on short
+  // episodes, and a bare start-end key would collide (dup React keys + preview state).
+  const candidateKey = (c: CueCandidate) => `${c.kind ?? 'recurring'}-${c.start}-${c.end}`;
 
   const stopPreview = () => {
     reqRef.current += 1;
@@ -158,8 +160,8 @@ function CueCandidatesSection({
       storageKey={`episode-cue-candidates-${episodeId}`}
     >
       <p className="text-sm text-muted-foreground mb-3">
-        Scan the episode for audio cues: sounds that repeat across it, plus
-        one-off intros, outros, and bumpers.
+        Scan for audio cues: ad-break stings that repeat within the episode, plus
+        intros and outros shared with other episodes of this feed.
       </p>
 
       {!scanned && (
@@ -221,7 +223,7 @@ function CueCandidatesSection({
                       {formatTime(c.start)} - {formatTime(c.end)}
                     </span>
                     <span className={`px-1.5 py-0.5 text-xs rounded font-medium ${
-                      c.kind === 'one_off'
+                      c.kind === 'intro' || c.kind === 'outro'
                         ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
                         : 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
                     }`}>

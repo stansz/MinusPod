@@ -612,16 +612,16 @@ function CueMarkModal({
               </div>
               <div className="absolute top-[20px] bottom-0 left-1/2 -translate-x-1/2 w-0.5 bg-amber-500 shadow-[0_0_4px_rgba(245,158,11,0.8)]" />
             </div>
-            {/* Recurring-sound markers: the sounds that repeat across the
-                episode (the cue candidates). Click to jump; full-height and
-                tinted so they read clearly under the boundary pins. */}
+            {/* Cue-candidate markers: within-episode recurring stings (sky) plus
+                cross-episode intro/outro segments (amber). Click to jump;
+                full-height and tinted so they read clearly under the pins. */}
             {(candidates ?? []).map((c) => {
               const rel = (c.start - windowStart) / windowDuration;
               if (rel < 0 || rel > 1) return null;
-              const isOneOff = c.kind === 'one_off';
+              const isXep = c.kind === 'intro' || c.kind === 'outro';
               return (
                 <button
-                  key={`${c.start}-${c.end}`}
+                  key={`${c.kind ?? 'recurring'}-${c.start}-${c.end}`}
                   type="button"
                   onClick={() => seekTo(c.start)}
                   title={`${cueCandidateLabel(c)}, at ${formatTime(c.start)} - click to jump`}
@@ -630,11 +630,11 @@ function CueMarkModal({
                   style={{ left: `${rel * 100}%` }}
                 >
                   <span className={`block mx-auto h-full w-0.5 ${
-                    isOneOff
+                    isXep
                       ? 'bg-amber-500/60 group-hover:bg-amber-500'
                       : 'bg-sky-500/60 group-hover:bg-sky-500'
                   }`} />
-                  {!isOneOff && (
+                  {!isXep && (
                     <span className="absolute top-0 left-1/2 -translate-x-1/2 px-1 rounded-b bg-sky-500 text-white text-[9px] font-bold leading-tight">
                       {c.count}x
                     </span>

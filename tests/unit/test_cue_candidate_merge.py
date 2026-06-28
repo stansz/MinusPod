@@ -1,100 +1,68 @@
-"""Tests for cue-candidate merging (recurring + one-off loud spots).
+"""Tests for cue-candidate merging (within-episode recurrence + cross-episode).
 
-The candidate scan used to surface only sounds that recur >= 3x in an episode,
-so a once-per-episode intro/outro/bumper never appeared. merge_cue_candidates
-folds in one-off loud spots and tags every candidate with a kind and a
-positional cue-type hint so candidates cover all cue types.
+merge_cue_candidates combines recurring sounds (ad-break stings that repeat within
+the episode) with cross-episode intro/outro segments (head/tail audio shared across
+sibling episodes), tagging each with a kind and a capture-type hint.
 """
-from audio_analysis.cue_candidates import (
-    merge_cue_candidates, candidate_suggested_type,
-)
-from config import (
-    AUDIO_CUE_CANDIDATE_MAX_RESULTS,
-    AUDIO_CUE_TYPE_SHOW_INTRO,
-    AUDIO_CUE_TYPE_SHOW_OUTRO,
-)
-
-
-class TestSuggestedType:
-    def test_near_start_is_intro(self):
-        assert candidate_suggested_type(3.0, 7.0, 1800.0) == AUDIO_CUE_TYPE_SHOW_INTRO
-
-    def test_near_end_is_outro(self):
-        assert candidate_suggested_type(1790.0, 1799.0, 1800.0) == AUDIO_CUE_TYPE_SHOW_OUTRO
-
-    def test_middle_is_untyped(self):
-        assert candidate_suggested_type(900.0, 905.0, 1800.0) is None
-
-    def test_unknown_duration_skips_outro_but_still_types_intro(self):
-        assert candidate_suggested_type(1790.0, 1799.0, None) is None
-        assert candidate_suggested_type(3.0, 7.0, None) == AUDIO_CUE_TYPE_SHOW_INTRO
-
-    def test_short_episode_picks_nearer_edge(self):
-        # On a short episode the intro and outro windows overlap; the nearer
-        # edge wins instead of intro always short-circuiting.
-        assert candidate_suggested_type(8.0, 20.0, 100.0) == AUDIO_CUE_TYPE_SHOW_INTRO
-        assert candidate_suggested_type(82.0, 95.0, 100.0) == AUDIO_CUE_TYPE_SHOW_OUTRO
+from audio_analysis.cue_candidates import merge_cue_candidates
+from config import AUDIO_CUE_TYPE_SHOW_INTRO, AUDIO_CUE_TYPE_SHOW_OUTRO
 
 
 class TestMergeCueCandidates:
     def test_recurring_tagged_with_kind_and_count(self):
-        out = merge_cue_candidates([{'start': 400.0, 'end': 404.0, 'count': 4}], [], 1800.0)
+        out = merge_cue_candidates([{'start': 400.0, 'end': 404.0, 'count': 4}], [])
         assert out == [{
             'start': 400.0, 'end': 404.0, 'kind': 'recurring',
             'count': 4, 'suggestedType': None,
         }]
 
-    def test_loud_spot_overlapping_a_recurring_hit_is_dropped(self):
-        recurring = [{'start': 400.0, 'end': 410.0, 'count': 3}]
-        loud = [{'start': 405.0, 'end': 408.0, 'prominenceDb': 20.0}]
-        out = merge_cue_candidates(recurring, loud, 1800.0)
-        assert len(out) == 1
-        assert out[0]['kind'] == 'recurring'
-
-    def test_non_overlapping_loud_spot_becomes_one_off(self):
-        loud = [{'start': 900.0, 'end': 904.0, 'prominenceDb': 12.0}]
-        out = merge_cue_candidates([], loud, 1800.0)
+    def test_intro_tagged_with_suggested_type(self):
+        xe = [{'start': 2.0, 'end': 9.0, 'kind': 'intro', 'episodeMatches': 4}]
+        out = merge_cue_candidates([], xe)
         assert out == [{
-            'start': 900.0, 'end': 904.0, 'kind': 'one_off',
-            'prominenceDb': 12.0, 'suggestedType': None,
+            'start': 2.0, 'end': 9.0, 'kind': 'intro',
+            'episodeMatches': 4, 'suggestedType': AUDIO_CUE_TYPE_SHOW_INTRO,
         }]
 
-    def test_recurring_ranks_before_one_off(self):
-        recurring = [{'start': 900.0, 'end': 903.0, 'count': 3}]
-        loud = [{'start': 200.0, 'end': 205.0, 'prominenceDb': 99.0}]
-        out = merge_cue_candidates(recurring, loud, 1800.0)
-        assert [c['kind'] for c in out] == ['recurring', 'one_off']
+    def test_outro_tagged_with_suggested_type(self):
+        xe = [{'start': 1700.0, 'end': 1718.0, 'kind': 'outro', 'episodeMatches': 3}]
+        out = merge_cue_candidates([], xe)
+        assert out[0]['kind'] == 'outro'
+        assert out[0]['suggestedType'] == AUDIO_CUE_TYPE_SHOW_OUTRO
+        assert out[0]['episodeMatches'] == 3
 
-    def test_recurring_sorted_by_count_desc(self):
-        recurring = [
-            {'start': 500.0, 'end': 503.0, 'count': 2},
-            {'start': 900.0, 'end': 903.0, 'count': 7},
+    def test_cross_episode_ranks_before_recurring(self):
+        recurring = [{'start': 900.0, 'end': 903.0, 'count': 5}]
+        xe = [
+            {'start': 2.0, 'end': 9.0, 'kind': 'intro', 'episodeMatches': 4},
+            {'start': 1700.0, 'end': 1715.0, 'kind': 'outro', 'episodeMatches': 3},
         ]
-        out = merge_cue_candidates(recurring, [], 1800.0)
+        out = merge_cue_candidates(recurring, xe)
+        assert [c['kind'] for c in out] == ['intro', 'outro', 'recurring']
+
+    def test_recurring_order_preserved(self):
+        # discover_recurring_spots already returns descending recurrence order;
+        # the merge keeps it.
+        recurring = [
+            {'start': 900.0, 'end': 903.0, 'count': 7},
+            {'start': 500.0, 'end': 503.0, 'count': 2},
+        ]
+        out = merge_cue_candidates(recurring, [])
         assert [c['count'] for c in out] == [7, 2]
 
-    def test_one_offs_sorted_by_prominence_desc(self):
-        loud = [
-            {'start': 500.0, 'end': 503.0, 'prominenceDb': 6.0},
-            {'start': 900.0, 'end': 903.0, 'prominenceDb': 18.0},
-        ]
-        out = merge_cue_candidates([], loud, 1800.0)
-        assert [c['prominenceDb'] for c in out] == [18.0, 6.0]
+    def test_recurring_overlapping_cross_episode_is_dropped(self):
+        # A sting that both recurs within the episode and is an intro is one sound;
+        # keep the typed intro, drop the duplicate recurring hit.
+        recurring = [{'start': 3.0, 'end': 9.0, 'count': 4}]
+        xe = [{'start': 2.0, 'end': 9.5, 'kind': 'intro', 'episodeMatches': 3}]
+        out = merge_cue_candidates(recurring, xe)
+        assert [c['kind'] for c in out] == ['intro']
 
-    def test_only_one_offs_get_positional_typing(self):
-        # A recurring sound is an ad sting, not a once-per-episode intro/outro,
-        # so it gets no positional hint even near an edge; a one-off does.
-        recurring = [{'start': 2.0, 'end': 6.0, 'count': 3}]      # near start
-        loud = [{'start': 1795.0, 'end': 1799.0, 'prominenceDb': 9.0}]  # near end
-        out = merge_cue_candidates(recurring, loud, 1800.0)
-        by_kind = {c['kind']: c['suggestedType'] for c in out}
-        assert by_kind['recurring'] is None
-        assert by_kind['one_off'] == AUDIO_CUE_TYPE_SHOW_OUTRO
+    def test_recurring_not_overlapping_is_kept(self):
+        recurring = [{'start': 900.0, 'end': 903.0, 'count': 4}]
+        xe = [{'start': 2.0, 'end': 9.0, 'kind': 'intro', 'episodeMatches': 3}]
+        out = merge_cue_candidates(recurring, xe)
+        assert [c['kind'] for c in out] == ['intro', 'recurring']
 
-    def test_result_is_capped(self):
-        recurring = [
-            {'start': float(i * 10), 'end': float(i * 10 + 2), 'count': 3}
-            for i in range(AUDIO_CUE_CANDIDATE_MAX_RESULTS + 5)
-        ]
-        out = merge_cue_candidates(recurring, [], 1800.0)
-        assert len(out) == AUDIO_CUE_CANDIDATE_MAX_RESULTS
+    def test_empty_inputs_give_empty_list(self):
+        assert merge_cue_candidates([], []) == []

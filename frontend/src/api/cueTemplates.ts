@@ -188,26 +188,25 @@ export async function scanEpisodeCues(
   );
 }
 
-export type CueCandidateKind = 'recurring' | 'one_off';
+export type CueCandidateKind = 'recurring' | 'intro' | 'outro';
 
 export interface CueCandidate {
   start: number;
   end: number;
-  // 'recurring' (fingerprint self-repeat) or 'one_off' (a loud spot that does
-  // not recur -- an intro/outro/bumper). Older servers omit kind and only ever
-  // returned recurring candidates, so a missing kind is treated as recurring.
+  // 'recurring' (repeats within the episode -- an ad-break sting) or 'intro'/
+  // 'outro' (a head/tail segment shared across sibling episodes). Older servers
+  // omit kind and only returned recurring candidates, so missing = recurring.
   kind?: CueCandidateKind;
-  count?: number;         // recurring: times the sound recurs in the episode
-  prominenceDb?: number;  // one_off: loudness above baseline
-  suggestedType?: CueTemplateType | null;  // positional hint for the capture type
+  count?: number;          // recurring: times the sound recurs within the episode
+  episodeMatches?: number; // intro/outro: how many sibling episodes share it
+  suggestedType?: CueTemplateType | null;  // capture-type hint
 }
 
-// Short badge label for a candidate: recurrence count, or a positional hint.
+// Short badge label for a candidate.
 export function cueCandidateLabel(c: CueCandidate): string {
-  if (c.kind !== 'one_off') return `Repeats ${c.count ?? '?'}x`;
-  if (c.suggestedType === 'show_intro') return 'Intro?';
-  if (c.suggestedType === 'show_outro') return 'Outro?';
-  return 'Loud spot';
+  if (c.kind === 'intro') return `Intro (in ${c.episodeMatches ?? '?'} eps)`;
+  if (c.kind === 'outro') return `Outro (in ${c.episodeMatches ?? '?'} eps)`;
+  return `Repeats ${c.count ?? '?'}x`;
 }
 
 export type CueCandidateScanStatus = 'scanning' | 'ready' | 'error';
