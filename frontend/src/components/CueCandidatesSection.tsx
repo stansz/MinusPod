@@ -4,7 +4,7 @@ import CollapsibleSection from './CollapsibleSection';
 import LoadingSpinner from './LoadingSpinner';
 import CueMarkModal from './CueMarkModal';
 import {
-  getCueCandidates, cueCandidateLabel, captureMaxForType,
+  getCueCandidates, cueCandidateLabel,
   type CueCandidate, type CueTemplateType,
 } from '../api/cueTemplates';
 import { getSettings } from '../api/settings';
@@ -144,15 +144,10 @@ function CueCandidatesSection({
 
   const makeTemplate = (c: CueCandidate) => {
     stopPreview();
-    // Seed the capture type from the positional hint and clamp to that type's
-    // ceiling -- an intro/outro candidate may run up to 60s, not the 10s
-    // ad-break default.
-    const cueType = c.suggestedType ?? undefined;
-    const maxLen = captureMaxForType(
-      cueType ?? 'ad_break_boundary',
-      captureMaxSeconds, captureMaxIntroSeconds, captureMaxOutroSeconds,
-    );
-    setSeed({ start: c.start, end: Math.min(c.end, c.start + maxLen), cueType });
+    // Seed the capture type from the positional hint and pass the full span;
+    // the modal clamps the region to the chosen type's ceiling, so switching
+    // type there clamps against the right ceiling instead of a pre-truncated one.
+    setSeed({ start: c.start, end: c.end, cueType: c.suggestedType ?? undefined });
   };
 
   return (

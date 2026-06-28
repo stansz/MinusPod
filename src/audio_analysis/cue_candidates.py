@@ -13,11 +13,19 @@ from utils.time import ranges_overlap
 
 
 def candidate_suggested_type(start, end, episode_duration):
-    """Positional cue-type hint: intro near the episode start, outro near the
-    end, else none. A default the capture UI can override."""
-    if start <= AUDIO_CUE_INTRO_WINDOW_SECONDS:
+    """Positional cue-type hint for a one-off candidate: intro near the episode
+    start, outro near the end, else none. On a short episode where both windows
+    overlap, the nearer edge wins. A default the capture UI can override."""
+    near_start = start <= AUDIO_CUE_INTRO_WINDOW_SECONDS
+    near_end = (bool(episode_duration)
+                and end >= episode_duration - AUDIO_CUE_OUTRO_WINDOW_SECONDS)
+    if near_start and near_end:
+        return (AUDIO_CUE_TYPE_SHOW_INTRO
+                if start <= episode_duration - end
+                else AUDIO_CUE_TYPE_SHOW_OUTRO)
+    if near_start:
         return AUDIO_CUE_TYPE_SHOW_INTRO
-    if episode_duration and end >= episode_duration - AUDIO_CUE_OUTRO_WINDOW_SECONDS:
+    if near_end:
         return AUDIO_CUE_TYPE_SHOW_OUTRO
     return None
 
@@ -37,15 +45,17 @@ def merge_cue_candidates(recurring, loud_spots, episode_duration):
     recurrence scan never surfaces. Loud spots fill that gap so candidates cover
     all cue types, not just repeated sounds. A loud spot overlapping a recurrence
     hit is dropped (the recurrence hit is the stronger signal). Each candidate is
-    tagged with its kind and a positional cue-type hint; recurring candidates
+    tagged with its kind; one-offs also get a positional cue-type hint (a
+    recurring sound is an ad sting, not an intro/outro). Recurring candidates
     rank first (by recurrence count), then one-offs (by prominence).
     """
     merged = [
         {
             'start': c['start'], 'end': c['end'], 'kind': 'recurring',
             'count': c.get('count'),
-            'suggestedType': candidate_suggested_type(
-                c['start'], c['end'], episode_duration),
+            # A sound that recurs within one episode is an ad-break sting, not a
+            # once-per-episode intro/outro, so it gets no positional hint.
+            'suggestedType': None,
         }
         for c in recurring
     ]

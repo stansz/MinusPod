@@ -29,6 +29,12 @@ class TestSuggestedType:
         assert candidate_suggested_type(1790.0, 1799.0, None) is None
         assert candidate_suggested_type(3.0, 7.0, None) == AUDIO_CUE_TYPE_SHOW_INTRO
 
+    def test_short_episode_picks_nearer_edge(self):
+        # On a short episode the intro and outro windows overlap; the nearer
+        # edge wins instead of intro always short-circuiting.
+        assert candidate_suggested_type(8.0, 20.0, 100.0) == AUDIO_CUE_TYPE_SHOW_INTRO
+        assert candidate_suggested_type(82.0, 95.0, 100.0) == AUDIO_CUE_TYPE_SHOW_OUTRO
+
 
 class TestMergeCueCandidates:
     def test_recurring_tagged_with_kind_and_count(self):
@@ -75,12 +81,14 @@ class TestMergeCueCandidates:
         out = merge_cue_candidates([], loud, 1800.0)
         assert [c['prominenceDb'] for c in out] == [18.0, 6.0]
 
-    def test_positional_typing_applied_to_both_kinds(self):
-        recurring = [{'start': 2.0, 'end': 6.0, 'count': 3}]      # intro
-        loud = [{'start': 1795.0, 'end': 1799.0, 'prominenceDb': 9.0}]  # outro
+    def test_only_one_offs_get_positional_typing(self):
+        # A recurring sound is an ad sting, not a once-per-episode intro/outro,
+        # so it gets no positional hint even near an edge; a one-off does.
+        recurring = [{'start': 2.0, 'end': 6.0, 'count': 3}]      # near start
+        loud = [{'start': 1795.0, 'end': 1799.0, 'prominenceDb': 9.0}]  # near end
         out = merge_cue_candidates(recurring, loud, 1800.0)
         by_kind = {c['kind']: c['suggestedType'] for c in out}
-        assert by_kind['recurring'] == AUDIO_CUE_TYPE_SHOW_INTRO
+        assert by_kind['recurring'] is None
         assert by_kind['one_off'] == AUDIO_CUE_TYPE_SHOW_OUTRO
 
     def test_result_is_capped(self):

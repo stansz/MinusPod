@@ -258,7 +258,7 @@ AUDIO_CUE_FP_MAX_CANDIDATES = 10         # cap on candidates returned to the UI
 AUDIO_CUE_SCAN_FREQ_MIN_HZ = 500.0       # reach below the 1.5kHz live floor to catch bass stings
 AUDIO_CUE_SCAN_PROMINENCE_DB = 6.0       # dB over baseline to START a candidate burst (vs 9 live)
 AUDIO_CUE_SCAN_RELEASE_DB = 3.0          # extend the burst out to where it falls within this of baseline
-AUDIO_CUE_SCAN_MAX_DURATION_SECONDS = AUDIO_CUE_CANDIDATE_MAX_LEN_SECONDS  # allow sustained intro/outro beds (live cap is 2s)
+AUDIO_CUE_SCAN_MAX_DURATION_SECONDS = 12.0  # allow sustained musical beds (live cap is 2s); candidate scan overrides to the longer per-type cap
 # The recurrence scan decodes the whole episode (90s+ on a long show), so it
 # runs in a background thread and the result is cached. A scan row older than
 # this is treated as crashed/expired and reclaimable for a fresh run.

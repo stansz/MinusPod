@@ -8,7 +8,7 @@ import pytest
 
 from audio_analysis.cue_features import (
     SAMPLE_RATE_HZ, N_COEFFS, compute_mfcc, serialize_mfcc,
-    pcm_to_int16_bytes, int16_bytes_to_pcm,
+    pcm_to_int16_bytes, int16_bytes_to_pcm, pcm_to_flac, flac_to_wav,
 )
 
 requires_ffmpeg = pytest.mark.skipif(
@@ -54,8 +54,6 @@ def test_flac_roundtrip_is_lossless_and_preserves_mfcc():
     lossless, so the decoded PCM is bit-identical and the recomputed MFCC matches
     -- a shared cue matches the same way on the far install, at ~half the size.
     """
-    from audio_analysis.cue_features import pcm_to_flac, flac_to_wav
-
     rng = np.random.default_rng(0)
     pcm = np.clip(rng.standard_normal(SAMPLE_RATE_HZ // 2), -1, 1).astype(np.float32)
     pcm_blob = pcm_to_int16_bytes(pcm)
@@ -77,6 +75,17 @@ def test_flac_roundtrip_is_lossless_and_preserves_mfcc():
         compute_mfcc(int16_bytes_to_pcm(frames)),
         compute_mfcc(int16_bytes_to_pcm(pcm_blob)),
     )
+
+
+@requires_ffmpeg
+def test_flac_decode_rejects_wrong_sample_rate_before_expanding():
+    # flac_to_wav must reject a non-16kHz stream up front (via the probe), so a
+    # crafted high-rate FLAC cannot be decoded into an oversized in-memory WAV.
+    rng = np.random.default_rng(2)
+    pcm = np.clip(rng.standard_normal(44100 // 2), -1, 1).astype(np.float32)
+    flac = pcm_to_flac(pcm_to_int16_bytes(pcm), 44100)  # 44.1kHz mono FLAC
+    with pytest.raises(RuntimeError):
+        flac_to_wav(flac, 120)
 
 
 def _add(temp_db, podcast_id, cue_type='ad_break_boundary', scope='podcast', network_id=None):

@@ -81,12 +81,20 @@ function CueMarkModal({
   // following the playhead, so the user always sees the whole episode at
   // 1x and zooms into the playhead position.
   const totalDuration = Math.max(0.001, episodeDuration);
-  const defaults = useMemo(() => ({
-    cueStart: typeof initialStart === 'number' ? initialStart : 0,
-    cueEnd: typeof initialEnd === 'number'
+  const defaults = useMemo(() => {
+    const start = typeof initialStart === 'number' ? initialStart : 0;
+    const rawEnd = typeof initialEnd === 'number'
       ? initialEnd
-      : Math.min(totalDuration, 1.0),
-  }), [initialStart, initialEnd, totalDuration]);
+      : Math.min(totalDuration, 1.0);
+    // Clamp the seeded region to the chosen cue type's ceiling (intro/outro get
+    // 60s, others 10s) so a long candidate is not pre-truncated to the wrong max.
+    const maxLen = captureMaxForType(
+      initialCueType ?? 'ad_break_boundary',
+      captureMaxSeconds, captureMaxIntroSeconds, captureMaxOutroSeconds,
+    );
+    return { cueStart: start, cueEnd: Math.min(rawEnd, start + maxLen, totalDuration) };
+  }, [initialStart, initialEnd, initialCueType, totalDuration,
+      captureMaxSeconds, captureMaxIntroSeconds, captureMaxOutroSeconds]);
 
   const [cueStart, setCueStart] = useState(defaults.cueStart);
   const [cueEnd, setCueEnd] = useState(defaults.cueEnd);

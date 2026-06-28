@@ -42,6 +42,7 @@ from config import (
     AUDIO_CUE_FREQ_MAX_HZ,
     AUDIO_CUE_SCAN_FREQ_MIN_HZ, AUDIO_CUE_SCAN_PROMINENCE_DB,
     AUDIO_CUE_SCAN_RELEASE_DB, AUDIO_CUE_SCAN_MAX_DURATION_SECONDS,
+    AUDIO_CUE_CANDIDATE_MAX_LEN_SECONDS,
     AUDIO_CUE_RECURRENCE_SIMILARITY, AUDIO_CUE_RECURRENCE_MIN_COUNT,
     AUDIO_CUE_CANDIDATE_SCAN_STALE_SECONDS,
     AUDIO_CUE_TYPES, AUDIO_CUE_TYPE_DEFAULT, AUDIO_CUE_TYPE_SHOW_INTRO,
@@ -63,9 +64,10 @@ CUE_TEMPLATE_SCHEMA_VERSION = 2
 # 16 kHz mono int16 cue is ~128 KB and its FLAC roughly half that; 5 MB is
 # generous headroom and a zip-bomb guard on top of the app-wide 10 MB limit.
 MAX_IMPORT_WAV_BYTES = 5 * 1024 * 1024
-# Bound the audio decoded from an imported FLAC so a highly compressible (e.g.
-# silent) FLAC cannot expand to an unbounded WAV. Far longer than any real cue.
-MAX_IMPORT_CUE_SECONDS = 600
+# Bound the decoded duration of an imported FLAC (flac_to_wav also rejects
+# non-mono / non-16kHz before decoding) so a long silent FLAC cannot expand to
+# an oversized WAV. 120s is well past any real cue (60s intro/outro ceiling).
+MAX_IMPORT_CUE_SECONDS = 120
 
 
 def _resolve_original_audio(db, storage, slug, episode_id):
@@ -590,7 +592,7 @@ def import_cue_template(slug):
     return json_response({'template': _template_to_meta_dict(row)}, status=201)
 
 
-def _scan_loud_spots(db, audio_path):
+def _scan_loud_spots(db, audio_path, max_duration=AUDIO_CUE_SCAN_MAX_DURATION_SECONDS):
     """Band-pass energy pass over original audio -> loud-spot dicts.
 
     Uses the generous discovery profile (config.AUDIO_CUE_SCAN_*), not the
@@ -599,6 +601,10 @@ def _scan_loud_spots(db, audio_path):
     threshold, and allows long sustained sounds. This surfaces the sustained,
     bass/broadband musical stings real ad breaks use, which the live band misses.
     The recurrence filter downstream keeps false positives down.
+
+    ``max_duration`` is the longest a single burst may span. The capture-UI
+    loud-spots endpoint uses the default; the cue-candidate scan passes the
+    longer per-type cap so a full-length intro/outro surfaces as one spot.
 
     Surfaces every burst (min_confidence=0.0). Each dict is
     {start, end, prominenceDb}. Raises on decode failure; the caller decides
@@ -609,7 +615,7 @@ def _scan_loud_spots(db, audio_path):
         freq_max_hz=AUDIO_CUE_FREQ_MAX_HZ,
         prominence_db=AUDIO_CUE_SCAN_PROMINENCE_DB,
         min_confidence=0.0,
-        max_duration=AUDIO_CUE_SCAN_MAX_DURATION_SECONDS,
+        max_duration=max_duration,
         release_db=AUDIO_CUE_SCAN_RELEASE_DB,
     )
     # Cap by prominence (strongest first), not by start time, so a recurring
@@ -707,7 +713,8 @@ def _run_cue_candidate_scan(podcast_id, episode_id, audio_path, similarity,
         recurring = AudioFingerprinter().discover_recurring_spots(
             audio_path, similarity=similarity, min_count=min_count)
         try:
-            loud_spots = _scan_loud_spots(db, audio_path)
+            loud_spots = _scan_loud_spots(
+                db, audio_path, max_duration=AUDIO_CUE_CANDIDATE_MAX_LEN_SECONDS)
         except Exception:
             logger.exception(
                 'loud-spot pass failed for %s/%s; using recurrence only',
@@ -773,7 +780,9 @@ def episode_cue_candidates(slug, episode_id):
     min_count = int(db.get_setting_float(
         'audio_cue_recurrence_min_count', AUDIO_CUE_RECURRENCE_MIN_COUNT))
     episode = db.get_episode(slug, episode_id)
-    episode_duration = (episode or {}).get('duration')
+    # The episodes table stores original_duration (the original-audio timeline
+    # the candidate scan runs on); there is no plain 'duration' column.
+    episode_duration = (episode or {}).get('original_duration')
     threading.Thread(
         target=_run_cue_candidate_scan,
         args=(podcast_id, episode_id, audio_path, similarity, min_count,
