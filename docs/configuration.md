@@ -132,13 +132,13 @@ Detection, verification, and reviewer prompts use explicit placeholder substitut
 
 - `{sponsor_database}` - substituted at runtime with the dynamic sponsor list (the one that grows as new sponsors are detected). Available in the system, verification, review, and resurrect prompts. If you remove this placeholder from your customized prompt, no sponsor list is injected on that prompt.
 - `{max_boundary_shift_seconds}` - review prompt only. Substituted with the current `Max boundary shift` setting. The boundary cap is enforced in code regardless of whether the placeholder is in the prompt.
-- `{override}` - substituted with that pass's override text (see below). If a customized prompt has no `{override}` placeholder, the override is appended at the end instead.
+- `{override}` - replaced with that pass's override text (see below). If a customized prompt omits it, the override is appended instead.
 
 If you customized your system or verification prompt before this release, the upgrade automatically appends `{sponsor_database}` to your prompt so behavior is preserved. The migration is idempotent and runs once.
 
 ### Per-pass prompt overrides
 
-Each pass (first, verification, reviewer, resurrect) has an optional **Override** field in Settings, empty by default. Whatever you put there is added to that pass at run time, so you can apply a tweak (for example, "keep this show's news roundup") without editing the large built-in prompt, which stays intact and resettable. The override is inserted at the pass's `{override}` placeholder if its prompt has one, otherwise appended under an "additional instructions" header. An empty override changes nothing, so the default prompts behave exactly as before until you fill one in.
+Each pass (first, verification, reviewer, resurrect) has an optional **Override** field in Settings, empty by default. Text there is added to that pass at run time, so you can apply a tweak (e.g. "keep this show's news roundup") without editing the built-in prompt, which stays intact. It is inserted at the prompt's `{override}` placeholder if present, otherwise appended under an "additional instructions" header. An empty override changes nothing.
 
 ### Audio Cue Detection
 
@@ -155,7 +155,7 @@ Settings live under Experiments, in the Audio Cue Detection section:
 - **Prominence threshold** - how far above the in-band speech baseline, in dB, a sound must rise to count as a cue in the spectral fallback. Lower catches quieter cues but adds false positives.
 - **Minimum confidence** - drops cues weaker than this. The model is never shown a cue below 0.80 confidence regardless of this value.
 - **Template match score** - the cross-correlation score a marked template must reach to register on another episode (0 to 0.99, default 0.75). Lower catches more occurrences but risks false matches. Applies only to feeds that have templates.
-- **Voiceover attenuation (dB)** - off by default. When a cue is a music bed under a voiceover that changes each episode (so the read varies but the jingle does not), raising this attenuates the 800-3400 Hz speech band during matching so the cue keys on its constant bed. It only touches that band, so bass beds and high chimes are unaffected; start around 9-12 dB if a music-bed cue matches inconsistently.
+- **Voiceover attenuation (dB)** - off by default. When a cue is a music bed under a per-episode voiceover (the jingle is constant, the read varies), this attenuates the 800-3400 Hz speech band during matching so the cue keys on the bed. Only that band is touched, so bass beds and high chimes are unaffected; try 9-12 dB if a music-bed cue matches inconsistently.
 - **Create ads from cue pairs** - off by default. When two high-confidence cues bracket a plausible break the model missed, synthesize a cue-only ad for that span. The reviewer still evaluates it. This relaxes the "cue is supporting evidence only" rule, so leave it off until you trust the matcher on a feed.
 - **Advanced tuning** - the snap confidence floor (how confident a cue must be to move an ad edge), the capture length minimum and maximum, and the cue-pair confidence floor and break-duration band. The defaults suit most shows; tune them only if a feed's cue is noisy or its breaks are unusually short or long.
 

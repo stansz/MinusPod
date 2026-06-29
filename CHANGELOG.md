@@ -10,20 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Numeric settings fields can be cleared and retyped. They were coerced on every keystroke, so you could not clear a field, and typing into a 0 produced "012" or "120" (worst on mobile). The Audio Cue Detection, Ad Reviewer, Transcription, and global-defaults number fields now use a shared input that allows clearing, accepts in-progress typing, and clamps on blur.
-- The "Create ads from cue pairs" toggle (Audio Cue Detection) now uses a one-line label like the other toggles and only appears when audio cue detection is enabled, since cue-pair synthesis needs the detector running.
+- Numeric settings fields can be cleared and retyped. They were coerced on every keystroke, so you could not clear a 0, and typing into it produced "012" or "120" (worst on mobile). The Audio Cue Detection, Ad Reviewer, Transcription, and global-defaults fields now share an input that allows clearing and clamps on blur.
+- The "Create ads from cue pairs" toggle now uses a one-line label like the others and only appears when audio cue detection is on (cue-pair synthesis needs the detector).
 
 ## [2.29.0] - 2026-06-29
 
 ### Added
 
-- Voiceover-robust cue matching (#350). A saved cue that is a music bed under a per-episode voiceover (for example the WSJ "The Journal" jingle) matched poorly across episodes because the voiceover varies. A new opt-in setting attenuates the 800-3400 Hz speech-formant band during template matching so a cue keys on its constant music bed. It is off by default and surgical: only the formant band is touched, so bass beds and high-frequency stings are unaffected, and existing templates are unchanged until you turn it on. Set `audio_cue_formant_atten_db` (a global setting) to enable it.
+- Voiceover-robust cue matching (#350). A saved cue that is a music bed under a per-episode voiceover (e.g. the WSJ "The Journal" jingle) matched poorly across episodes because the voiceover varies. The new `audio_cue_formant_atten_db` setting (off by default) attenuates the 800-3400 Hz speech band during template matching so the cue keys on its constant bed. Only that band is touched, so bass beds and high stings are unaffected, and existing cues are unchanged until you enable it.
 
 ### Changed
 
-- Recurring cue suggestions stop matching common spoken phrases (#350). The within-episode "Find audio cues" scan now runs a music-vs-speech check that drops candidates that are just talking (energy in the speech-formant band, not tonal, gappy) while keeping musical stings, even ones with a voiceover. Cross-episode intro/outro detection is unchanged. Already-scanned episodes are rescanned once so the filter applies to them too.
-- The "Content transition" cue type is relabeled "Content transition (may or may not be an ad)" and its save dialog no longer claims the segment is not an ad (#350). It is still never cut on its own; the wording now matches what it does. The model prompt was already correct and is unchanged.
-- "Re-detect Ads" (re-run ad detection on the saved transcript) now appears for failed episodes that still have a transcript, not only completed ones (#349). The backend already allowed this; the button was gated on the regenerated VTT, which a failed run never produced.
+- Recurring cue suggestions stop matching common spoken phrases (#350). The "Find audio cues" scan now drops candidates that read as speech (speech-band energy, not tonal, gappy) while keeping musical stings, even ones with a voiceover. Cross-episode intro/outro detection is unchanged; already-scanned episodes rescan once so the filter applies.
+- The "Content transition" cue type is relabeled "Content transition (may or may not be an ad)", and its save dialog no longer calls the segment not-an-ad (#350). It is still never cut on its own; only the wording changed (the model prompt was already correct).
+- "Re-detect Ads" (re-run detection on the saved transcript) now appears for failed episodes that still have a transcript, not just completed ones (#349). The backend already allowed it; the button was gated on the regenerated VTT, which a failed run never produces.
 
 ### Security
 
@@ -33,11 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Per-pass prompt overrides (#429). Each ad-detection pass (first pass, verification, reviewer, resurrect) now has an optional override field in Settings, empty by default. Text you put there is added to that pass's prompt at run time, so you can tweak a pass without editing the built-in default prompt. The defaults are unchanged and an empty override changes nothing. Put `{override}` in a customized prompt to control where it is inserted; otherwise it is appended.
+- Per-pass prompt overrides (#429). Each pass (first, verification, reviewer, resurrect) gets an optional override field in Settings, empty by default. Text there is added to that pass at run time, so you can tweak a pass without editing the built-in prompt; an empty override changes nothing. Put `{override}` in a customized prompt to control placement, otherwise it is appended.
 
 ### Changed
 
-- Gemini and other 429 rate-limit errors are handled cleanly (#435). A failed review no longer leaks the raw provider error payload into the ad editor; it shows a short "Review unavailable" note while the full error stays in the logs. A 429 that carries its retry delay in the response body (as Gemini does) is now honored for backoff, and free-tier daily-quota exhaustion fails fast instead of retrying a quota that cannot recover until the next day.
+- Cleaner Gemini/429 handling (#435). A failed review no longer leaks the raw provider payload into the ad editor; it shows a short "Review unavailable" note while the full error stays in the logs. A 429 with a retry delay in its body (as Gemini sends) is honored for backoff, and free-tier daily-quota exhaustion fails fast instead of retrying a quota that cannot recover until tomorrow.
 - Updated dependencies: openai 2.44.0, anthropic 0.112.0, huggingface-hub 1.21.0, nh3 0.3.6; frontend recharts 3.9.0, lucide-react 1.22.0, swagger-ui-dist 5.32.8, @typescript-eslint/parser 8.62.0, globals 17.7.0; CI actions/cache 6.1.0 and actions/setup-python 6.3.0.
 
 ## [2.27.3] - 2026-06-28
