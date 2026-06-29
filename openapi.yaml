@@ -12,7 +12,7 @@ info:
     - Monitor system status and trigger cleanup operations
     - Manage cross-episode ad patterns with network and podcast scope
     - Submit corrections to improve ad detection accuracy
-  version: 2.28.0
+  version: 2.29.0
   contact:
     name: MinusPod
   license:
@@ -3027,6 +3027,23 @@ paths:
                   description: ZNCC score a learned cue template must reach on another episode (default 0.75).
                   minimum: 0
                   maximum: 0.99
+                audioCueFormantAttenDb:
+                  type: number
+                  description: >-
+                    Voiceover-robust matching (#350). Attenuates the 800-3400 Hz speech-formant band in
+                    dB during cue-template matching so a cue keys on its constant music bed despite a
+                    varying voiceover. 0 disables it (default); existing/ding/full-spectrum cues are
+                    unchanged. A per-template override may supersede this. Typical opt-in ~9-12.
+                  minimum: 0
+                  maximum: 24
+                audioCueRecurringWindowSeconds:
+                  type: number
+                  description: >-
+                    Probe-window length (seconds) for within-episode recurring cue suggestions (#350).
+                    Longer windows reject short common phrases (default 4.0). Cross-episode intro/outro
+                    detection is unaffected.
+                  minimum: 1
+                  maximum: 10
                 audioCueSnapConfidence:
                   type: number
                   description: Min cue confidence before a cue may move an ad edge (default 0.80).
@@ -6071,6 +6088,22 @@ components:
         audioCueTemplateScore:
           type: object
           description: ZNCC score (0-0.99, default 0.75) a learned cue template must reach to register on another episode.
+          properties:
+            value:
+              type: number
+            isDefault:
+              type: boolean
+        audioCueFormantAttenDb:
+          type: object
+          description: Speech-formant-band attenuation in dB for voiceover-robust cue matching (#350). 0 = off (default).
+          properties:
+            value:
+              type: number
+            isDefault:
+              type: boolean
+        audioCueRecurringWindowSeconds:
+          type: object
+          description: Probe-window seconds for within-episode recurring cue suggestions (#350, default 4.0).
           properties:
             value:
               type: number
