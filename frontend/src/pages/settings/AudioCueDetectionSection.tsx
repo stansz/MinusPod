@@ -223,24 +223,24 @@ function AudioCueDetectionSection({ audioCue, onChange }: AudioCueDetectionSecti
               {numRow('pairMaxBreakFraction', 'audioCuePairMaxBreakFraction', 'Cue-pair maximum break (fraction of episode)', 0, 1, 0.05, 0.5,
                 'Reject a cue pair spanning more than this fraction of the episode. A short-episode backstop against a pair bracketing most of the show. 0 disables it.')}
             </div>
+
+            <div className="border-t border-border pt-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <ToggleSwitch
+                  checked={audioCue.createFromPairs}
+                  onChange={(v) => update('createFromPairs', v)}
+                  ariaLabel="Create ads from cue pairs"
+                />
+                <span className="text-sm font-medium text-foreground">
+                  Create ads from cue pairs
+                </span>
+              </label>
+              <p className="mt-2 text-sm text-muted-foreground ml-14">
+                When two high-confidence cues bracket a break the model missed, create a cue-only ad for the reviewer to check. Off by default - turn it on once you trust the matcher on this feed.
+              </p>
+            </div>
           </div>
         )}
-
-        <div className="border-t border-border pt-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <ToggleSwitch
-              checked={audioCue.createFromPairs}
-              onChange={(v) => update('createFromPairs', v)}
-              ariaLabel="Create ads from cue pairs"
-            />
-            <span className="text-sm font-medium text-foreground">
-              Create ads from cue pairs when the LLM misses a break
-            </span>
-          </label>
-          <p className="mt-2 text-sm text-muted-foreground ml-14">
-            When two high-confidence cues bracket a break the model missed, create a cue-only ad for the reviewer to check. Off by default - turn it on once you trust the matcher on this feed.
-          </p>
-        </div>
       </div>
     </CollapsibleSection>
   );
