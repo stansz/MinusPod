@@ -63,6 +63,7 @@ export interface EpisodeDetail extends Episode {
   originalAudioUrl?: string;
   transcript?: string;
   originalTranscriptAvailable?: boolean;
+  transcriptAvailable?: boolean;
   transcriptVttAvailable?: boolean;
   transcriptVttUrl?: string;
   chaptersAvailable?: boolean;
@@ -183,6 +184,10 @@ export interface Settings {
   verificationPrompt: SettingValue;
   reviewPrompt: SettingValue;
   resurrectPrompt: SettingValue;
+  systemPromptOverride: SettingValue;
+  verificationPromptOverride: SettingValue;
+  reviewPromptOverride: SettingValue;
+  resurrectPromptOverride: SettingValue;
   enableAdReview: SettingValueBoolean;
   reviewModel: SettingValue;
   reviewMaxBoundaryShift: SettingValueNumber;
@@ -209,6 +214,7 @@ export interface Settings {
   audioCueMinConfidence: SettingValueNumber;
   audioCueCreateFromPairs: SettingValueBoolean;
   audioCueTemplateScore: SettingValueNumber;
+  audioCueFormantAttenDb: SettingValueNumber;
   audioCueSnapConfidence: SettingValueNumber;
   audioCueCaptureMinSeconds: SettingValueNumber;
   audioCueCaptureMaxSeconds: SettingValueNumber;
@@ -279,6 +285,7 @@ export interface Settings {
     audioCueMinConfidence: number;
     audioCueCreateFromPairs: boolean;
     audioCueTemplateScore: number;
+    audioCueFormantAttenDb: number;
     audioCueSnapConfidence: number;
     audioCueCaptureMinSeconds: number;
     audioCueCaptureMaxSeconds: number;
@@ -297,6 +304,10 @@ export interface UpdateSettingsPayload {
   verificationPrompt?: string;
   reviewPrompt?: string;
   resurrectPrompt?: string;
+  systemPromptOverride?: string;
+  verificationPromptOverride?: string;
+  reviewPromptOverride?: string;
+  resurrectPromptOverride?: string;
   enableAdReview?: boolean;
   reviewModel?: string;
   reviewMaxBoundaryShift?: number;
@@ -323,6 +334,7 @@ export interface UpdateSettingsPayload {
   audioCueMinConfidence?: number;
   audioCueCreateFromPairs?: boolean;
   audioCueTemplateScore?: number;
+  audioCueFormantAttenDb?: number;
   audioCueSnapConfidence?: number;
   audioCueCaptureMinSeconds?: number;
   audioCueCaptureMaxSeconds?: number;

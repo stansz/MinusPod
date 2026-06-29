@@ -117,6 +117,7 @@ def get_settings():
         AUDIO_CUE_FREQ_MIN_HZ, AUDIO_CUE_FREQ_MAX_HZ,
         AUDIO_CUE_PROMINENCE_DB, AUDIO_CUE_MIN_CONFIDENCE,
         AUDIO_CUE_TEMPLATE_SCORE, AUDIO_CUE_SNAP_CONFIDENCE,
+        AUDIO_CUE_FORMANT_ATTEN_DB,
         AUDIO_CUE_CAPTURE_MIN_SECONDS, AUDIO_CUE_CAPTURE_MAX_SECONDS,
         AUDIO_CUE_CAPTURE_MAX_INTRO_SECONDS, AUDIO_CUE_CAPTURE_MAX_OUTRO_SECONDS,
         AUDIO_CUE_PAIR_CONFIDENCE, AUDIO_CUE_PAIR_MIN_BREAK_SECONDS,
@@ -335,6 +336,7 @@ def get_settings():
     audio_cue_prominence = _cue_num('audio_cue_prominence_db', AUDIO_CUE_PROMINENCE_DB)
     audio_cue_min_conf = _cue_num('audio_cue_min_confidence', AUDIO_CUE_MIN_CONFIDENCE)
     audio_cue_template_score = _cue_num('audio_cue_template_score', AUDIO_CUE_TEMPLATE_SCORE)
+    audio_cue_formant_atten = _cue_num('audio_cue_formant_atten_db', AUDIO_CUE_FORMANT_ATTEN_DB)
     audio_cue_snap_conf = _cue_num('audio_cue_snap_confidence', AUDIO_CUE_SNAP_CONFIDENCE)
     audio_cue_capture_min = _cue_num('audio_cue_capture_min_seconds', AUDIO_CUE_CAPTURE_MIN_SECONDS)
     audio_cue_capture_max = _cue_num('audio_cue_capture_max_seconds', AUDIO_CUE_CAPTURE_MAX_SECONDS)
@@ -353,6 +355,10 @@ def get_settings():
         'reviewMaxBoundaryShift': _sv('review_max_boundary_shift', review_max_boundary_shift),
         'reviewPrompt': _sv('review_prompt', review_prompt),
         'resurrectPrompt': _sv('resurrect_prompt', resurrect_prompt),
+        'systemPromptOverride': _sv('system_prompt_override', _setting_value(settings, 'system_prompt_override', '') or ''),
+        'verificationPromptOverride': _sv('verification_prompt_override', _setting_value(settings, 'verification_prompt_override', '') or ''),
+        'reviewPromptOverride': _sv('review_prompt_override', _setting_value(settings, 'review_prompt_override', '') or ''),
+        'resurrectPromptOverride': _sv('resurrect_prompt_override', _setting_value(settings, 'resurrect_prompt_override', '') or ''),
         'claudeModel': _sv('claude_model', current_model),
         'verificationModel': _sv('verification_model', verification_model),
         'whisperModel': _sv('whisper_model', whisper_model),
@@ -388,6 +394,7 @@ def get_settings():
         'audioCueMinConfidence': _sv('audio_cue_min_confidence', audio_cue_min_conf),
         'audioCueCreateFromPairs': _sv('audio_cue_create_from_pairs', audio_cue_create_from_pairs),
         'audioCueTemplateScore': _sv('audio_cue_template_score', audio_cue_template_score),
+        'audioCueFormantAttenDb': _sv('audio_cue_formant_atten_db', audio_cue_formant_atten),
         'audioCueSnapConfidence': _sv('audio_cue_snap_confidence', audio_cue_snap_conf),
         'audioCueCaptureMinSeconds': _sv('audio_cue_capture_min_seconds', audio_cue_capture_min),
         'audioCueCaptureMaxSeconds': _sv('audio_cue_capture_max_seconds', audio_cue_capture_max),
@@ -453,6 +460,7 @@ def get_settings():
             'audioCueMinConfidence': AUDIO_CUE_MIN_CONFIDENCE,
             'audioCueCreateFromPairs': False,
             'audioCueTemplateScore': AUDIO_CUE_TEMPLATE_SCORE,
+            'audioCueFormantAttenDb': AUDIO_CUE_FORMANT_ATTEN_DB,
             'audioCueSnapConfidence': AUDIO_CUE_SNAP_CONFIDENCE,
             'audioCueCaptureMinSeconds': AUDIO_CUE_CAPTURE_MIN_SECONDS,
             'audioCueCaptureMaxSeconds': AUDIO_CUE_CAPTURE_MAX_SECONDS,
@@ -536,6 +544,17 @@ def _apply_prompt_fields(db, data):
             else:
                 db.set_setting(db_key, data[payload_key], is_default=False)
                 logger.info(f"Updated {log_label}")
+    # Per-pass overrides: empty is valid (means "no override for this pass"),
+    # so store the value as-is rather than resetting to a default.
+    for payload_key, db_key in (
+        ('systemPromptOverride', 'system_prompt_override'),
+        ('verificationPromptOverride', 'verification_prompt_override'),
+        ('reviewPromptOverride', 'review_prompt_override'),
+        ('resurrectPromptOverride', 'resurrect_prompt_override'),
+    ):
+        if payload_key in data:
+            db.set_setting(db_key, str(data[payload_key] or ''), is_default=False)
+            logger.info(f"Updated {db_key}")
     return None
 
 
@@ -967,6 +986,7 @@ def _apply_audio_cue_fields(db, data):
         ('audioCueProminenceDb', 'audio_cue_prominence_db', 1.0, 40.0),
         ('audioCueMinConfidence', 'audio_cue_min_confidence', 0.0, 1.0),
         ('audioCueTemplateScore', 'audio_cue_template_score', 0.0, 0.99),
+        ('audioCueFormantAttenDb', 'audio_cue_formant_atten_db', 0.0, 24.0),
         ('audioCueSnapConfidence', 'audio_cue_snap_confidence', 0.0, 1.0),
         ('audioCueCaptureMinSeconds', 'audio_cue_capture_min_seconds', 0.05, 10.0),
         ('audioCueCaptureMaxSeconds', 'audio_cue_capture_max_seconds', 0.05, 30.0),
@@ -1204,6 +1224,7 @@ def reset_ad_detection_settings():
     db.reset_setting('audio_cue_prominence_db')
     db.reset_setting('audio_cue_min_confidence')
     db.reset_setting('audio_cue_template_score')
+    db.reset_setting('audio_cue_formant_atten_db')
     db.reset_setting('audio_cue_create_from_pairs')
     db.reset_setting('audio_cue_snap_confidence')
     db.reset_setting('audio_cue_capture_min_seconds')
@@ -1247,6 +1268,11 @@ def reset_prompts_only():
     db.reset_setting('verification_prompt')
     db.reset_setting('review_prompt')
     db.reset_setting('resurrect_prompt')
+
+    # Clear per-pass overrides too (empty is the no-override default state).
+    for key in ('system_prompt_override', 'verification_prompt_override',
+                'review_prompt_override', 'resurrect_prompt_override'):
+        db.set_setting(key, '', is_default=True)
 
     logger.info("Reset prompts to defaults")
     return json_response({'message': 'Prompts reset to defaults'})

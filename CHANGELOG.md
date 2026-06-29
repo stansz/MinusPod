@@ -6,6 +6,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.29.1] - 2026-06-29
+
+### Fixed
+
+- Numeric settings fields can be cleared and retyped. They were coerced on every keystroke, so you could not clear a 0, and typing into it produced "012" or "120" (worst on mobile). The Audio Cue Detection, Ad Reviewer, Transcription, and global-defaults fields now share an input that allows clearing and clamps on blur.
+- The "Create ads from cue pairs" toggle now uses a one-line label like the others and only appears when audio cue detection is on (cue-pair synthesis needs the detector).
+
+## [2.29.0] - 2026-06-29
+
+### Added
+
+- Voiceover-robust cue matching (#350). A saved cue that is a music bed under a per-episode voiceover (e.g. the WSJ "The Journal" jingle) matched poorly across episodes because the voiceover varies. The new `audio_cue_formant_atten_db` setting (off by default) attenuates the 800-3400 Hz speech band during template matching so the cue keys on its constant bed. Only that band is touched, so bass beds and high stings are unaffected, and existing cues are unchanged until you enable it.
+
+### Changed
+
+- Recurring cue suggestions stop matching common spoken phrases (#350). The "Find audio cues" scan now drops candidates that read as speech (speech-band energy, not tonal, gappy) while keeping musical stings, even ones with a voiceover. Cross-episode intro/outro detection is unchanged; already-scanned episodes rescan once so the filter applies.
+- The "Content transition" cue type is relabeled "Content transition (may or may not be an ad)", and its save dialog no longer calls the segment not-an-ad (#350). It is still never cut on its own; only the wording changed (the model prompt was already correct).
+- "Re-detect Ads" (re-run detection on the saved transcript) now appears for failed episodes that still have a transcript, not just completed ones (#349). The backend already allowed it; the button was gated on the regenerated VTT, which a failed run never produces.
+
+### Security
+
+- Bumped `@babel/core` to 7.29.7 (GHSA-4x5r-pxfx-6jf8, build-time dev dependency) and `brace-expansion` to 5.0.7; `npm audit` is clean (#27).
+
+## [2.28.0] - 2026-06-29
+
+### Added
+
+- Per-pass prompt overrides (#429). Each pass (first, verification, reviewer, resurrect) gets an optional override field in Settings, empty by default. Text there is added to that pass at run time, so you can tweak a pass without editing the built-in prompt; an empty override changes nothing. Put `{override}` in a customized prompt to control placement, otherwise it is appended.
+
+### Changed
+
+- Cleaner Gemini/429 handling (#435). A failed review no longer leaks the raw provider payload into the ad editor; it shows a short "Review unavailable" note while the full error stays in the logs. A 429 with a retry delay in its body (as Gemini sends) is honored for backoff, and free-tier daily-quota exhaustion fails fast instead of retrying a quota that cannot recover until tomorrow.
+- Updated dependencies: openai 2.44.0, anthropic 0.112.0, huggingface-hub 1.21.0, nh3 0.3.6; frontend recharts 3.9.0, lucide-react 1.22.0, swagger-ui-dist 5.32.8, @typescript-eslint/parser 8.62.0, globals 17.7.0; CI actions/cache 6.1.0 and actions/setup-python 6.3.0.
+
 ## [2.27.3] - 2026-06-28
 
 ### Fixed

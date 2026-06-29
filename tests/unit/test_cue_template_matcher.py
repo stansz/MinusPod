@@ -6,7 +6,9 @@ from audio_analysis.cue_template_matcher import (
     _peak_pick,
     _sliding_zncc,
 )
-from audio_analysis.cue_features import N_COEFFS, serialize_mfcc
+from audio_analysis.cue_features import (
+    N_COEFFS, SAMPLE_RATE_HZ, serialize_mfcc, compute_mfcc, pcm_to_int16_bytes,
+)
 
 
 def _make_template_row(mfcc: np.ndarray, *, template_id: int = 1,
@@ -69,3 +71,50 @@ def test_matcher_skips_invalid_templates():
     assert matcher.is_usable
     assert len(matcher._templates) == 1
     assert matcher._templates[0].label == 'ok'
+
+
+# --- Global voiceover-robust formant profile (#350 4B) --------------------------
+
+def _tone(freq_hz, seconds=0.6):
+    t = np.arange(int(SAMPLE_RATE_HZ * seconds)) / SAMPLE_RATE_HZ
+    return (0.7 * np.sin(2 * np.pi * freq_hz * t)).astype(np.float32)
+
+
+def _row_with_pcm(pcm, *, template_id=1, with_pcm=True):
+    mfcc = compute_mfcc(pcm)   # stored blob computed at 0 dB, like production
+    row = {
+        'id': template_id, 'label': 'wsj',
+        'mfcc_blob': serialize_mfcc(mfcc),
+        'duration_s': len(pcm) / SAMPLE_RATE_HZ,
+        'n_coeffs': mfcc.shape[1],
+        'pcm_blob': pcm_to_int16_bytes(pcm) if with_pcm else None,
+    }
+    return row, mfcc
+
+
+def test_global_attenuation_rederives_from_pcm():
+    # An AM in-band tone has in-band temporal structure, so a non-zero global
+    # profile must yield a different (re-derived) MFCC than the stored 0 dB blob.
+    t = np.arange(int(SAMPLE_RATE_HZ * 0.6)) / SAMPLE_RATE_HZ
+    pcm = ((0.5 + 0.5 * np.sin(2 * np.pi * 4 * t)) * np.sin(2 * np.pi * 1500 * t)).astype(np.float32)
+    row, stored = _row_with_pcm(pcm)
+    m = AudioCueTemplateMatcher(templates=[row], formant_atten_db=12.0)
+    assert m.is_usable
+    assert not np.array_equal(m._templates[0].mfcc, stored)   # re-derived under profile
+
+
+def test_default_off_uses_stored_blob():
+    pcm = _tone(1500.0)
+    row, stored = _row_with_pcm(pcm)
+    m = AudioCueTemplateMatcher(templates=[row])   # global atten 0 (default)
+    assert np.array_equal(m._templates[0].mfcc, stored)
+
+
+def test_attenuation_without_pcm_falls_back_to_blob():
+    pcm = _tone(1500.0)
+    row, stored = _row_with_pcm(pcm, with_pcm=False)
+    # Global attenuation on but no PCM to re-derive from -> keep the stored blob.
+    m = AudioCueTemplateMatcher(templates=[row], formant_atten_db=12.0)
+    assert m.is_usable
+    assert np.array_equal(m._templates[0].mfcc, stored)
+    assert np.array_equal(m._templates[0].mfcc, stored)

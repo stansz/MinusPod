@@ -33,6 +33,7 @@ from audio_analysis.cue_template_matcher import (
     AudioCueTemplateMatcher, DEFAULT_MATCH_SCORE,
 )
 from audio_analysis.cue_candidates import merge_cue_candidates
+from audio_analysis.cue_speech_filter import is_likely_speech
 from audio_analysis.cue_detector import AudioCueDetector
 from audio_analysis.detected_cues import build_detected_cues
 from audio_fingerprinter import AudioFingerprinter
@@ -43,12 +44,16 @@ from config import (
     AUDIO_CUE_SCAN_FREQ_MIN_HZ, AUDIO_CUE_SCAN_PROMINENCE_DB,
     AUDIO_CUE_SCAN_RELEASE_DB, AUDIO_CUE_SCAN_MAX_DURATION_SECONDS,
     AUDIO_CUE_FP_WINDOW_SECONDS,
+    AUDIO_CUE_SPEECH_BAND_LO_HZ, AUDIO_CUE_SPEECH_BAND_HI_HZ,
+    AUDIO_CUE_SPEECH_BAND_RATIO_MAX, AUDIO_CUE_SPEECH_FLATNESS_MIN,
+    AUDIO_CUE_SPEECH_SUSTAINED_MAX,
     AUDIO_CUE_XEP_HEAD_SECONDS, AUDIO_CUE_XEP_TAIL_SECONDS,
     AUDIO_CUE_XEP_MAX_SIBLINGS, AUDIO_CUE_XEP_SIBLING_LOOKBACK,
     AUDIO_CUE_XEP_MIN_MATCHES,
     AUDIO_CUE_XEP_MIN_DURATION, AUDIO_CUE_XEP_MAX_DURATION,
     AUDIO_CUE_XEP_MAX_PER_ZONE, AUDIO_CUE_XEP_SIMILARITY,
     AUDIO_CUE_RECURRENCE_SIMILARITY, AUDIO_CUE_RECURRENCE_MIN_COUNT,
+    AUDIO_CUE_FORMANT_ATTEN_DB,
     AUDIO_CUE_CANDIDATE_SCAN_STALE_SECONDS,
     AUDIO_CUE_TYPES, AUDIO_CUE_TYPE_DEFAULT, AUDIO_CUE_TYPE_SHOW_INTRO,
     AUDIO_CUE_ROLE_NON_AD, audio_cue_type_role,
@@ -350,6 +355,8 @@ def cue_scan_episode(slug, episode_id):
         score = db.get_setting_float('audio_cue_template_score', DEFAULT_MATCH_SCORE)
     matcher = AudioCueTemplateMatcher(
         templates=templates, score_threshold=score,
+        formant_atten_db=db.get_setting_float(
+            'audio_cue_formant_atten_db', AUDIO_CUE_FORMANT_ATTEN_DB),
     )
     if not matcher.is_usable:
         return error_response('templates could not be loaded', 500)
@@ -423,6 +430,8 @@ def preview_cue_template(slug, episode_id):
     score = db.get_setting_float('audio_cue_template_score', DEFAULT_MATCH_SCORE)
     matcher = AudioCueTemplateMatcher(
         templates=[template], score_threshold=score,
+        formant_atten_db=db.get_setting_float(
+            'audio_cue_formant_atten_db', AUDIO_CUE_FORMANT_ATTEN_DB),
     )
     if not matcher.is_usable:
         return error_response('template could not be loaded', 500)
@@ -751,6 +760,37 @@ def _completed_sibling_audio_paths(db, storage, slug, episode_id):
     return paths
 
 
+def _drop_speechlike_recurring(recurring, audio_path):
+    """Drop recurring candidates that are plainly speech (common phrases), #350.
+
+    Decodes each candidate's audio span and applies the music/speech
+    discriminator; only confident speech is removed, so musical stings (even with
+    voiceover) survive. On any decode error the candidate is kept. Cross-episode
+    intro/outro candidates are NOT passed here -- those are often legitimately
+    spoken.
+    """
+    kept, dropped = [], 0
+    for c in recurring:
+        try:
+            pcm = decode_pcm_window(audio_path, c['start'], c['end'], SAMPLE_RATE_HZ)
+            if is_likely_speech(
+                pcm, SAMPLE_RATE_HZ,
+                lo_hz=AUDIO_CUE_SPEECH_BAND_LO_HZ, hi_hz=AUDIO_CUE_SPEECH_BAND_HI_HZ,
+                ratio_max=AUDIO_CUE_SPEECH_BAND_RATIO_MAX,
+                flatness_min=AUDIO_CUE_SPEECH_FLATNESS_MIN,
+                sustained_max=AUDIO_CUE_SPEECH_SUSTAINED_MAX,
+            ):
+                dropped += 1
+                continue
+        except Exception:
+            logger.debug('speech filter: decode failed for %s [%s-%s], keeping',
+                         audio_path, c.get('start'), c.get('end'))
+        kept.append(c)
+    if dropped:
+        logger.info('cue candidate scan: dropped %d speech-like recurring candidate(s)', dropped)
+    return kept
+
+
 def _run_cue_candidate_scan(podcast_id, episode_id, slug, audio_path,
                             similarity, min_count):
     """Background worker: find cue-template candidates, then persist them.
@@ -777,6 +817,9 @@ def _run_cue_candidate_scan(podcast_id, episode_id, slug, audio_path,
         recurring = fp.discover_recurring_spots(
             audio_path, similarity=similarity, min_count=min_count,
             target_fingerprint=target_fp)
+        # Drop within-episode candidates that are just common spoken phrases (#350);
+        # the cross-episode intro/outro pass below is exempt (intros can be spoken).
+        recurring = _drop_speechlike_recurring(recurring, audio_path)
         try:
             siblings = _completed_sibling_audio_paths(db, storage, slug, episode_id)
             cross_episode = fp.discover_cross_episode_cues(
@@ -797,18 +840,33 @@ def _run_cue_candidate_scan(podcast_id, episode_id, slug, audio_path,
             cross_episode = []
         templated = _templated_cue_spans(db, podcast_id, slug, episode_id)
         candidates = merge_cue_candidates(recurring, cross_episode, templated)
+        # Stamp the schema version so caches produced before the speech filter
+        # (#350 4A) read as stale and get rescanned once (the filter applies
+        # retroactively).
+        for c in candidates:
+            c['sv'] = CUE_CANDIDATE_SCHEMA_VERSION
         db.save_cue_candidate_scan_result(podcast_id, episode_id, candidates)
     except Exception as e:
         logger.exception('cue candidate scan failed for %s/%s', podcast_id, episode_id)
         db.save_cue_candidate_scan_error(podcast_id, episode_id, str(e))
 
 
+# Bumped when the candidate set's meaning changes so old caches are rescanned.
+# 2: the within-episode speech filter (#350 4A) -- a 2.28.0 cache can still hold
+# speech-like recurring candidates the filter now drops, so force a rescan.
+CUE_CANDIDATE_SCHEMA_VERSION = 2
+
+
 def _candidates_are_current(candidates):
-    """A cached scan from before 2.27.2 used kinds/fields this version no longer
-    emits (one_off / prominenceDb). Treat such rows as stale so they are rescanned
-    rather than rendered with the wrong shape. An empty result is current."""
+    """Stale-cache guard. A scan from before 2.27.2 used kinds/fields this version
+    no longer emits (one_off / prominenceDb); a scan from before 2.29.0 predates
+    the recurring speech filter. Both lack the current schema version stamp, so
+    they are treated as stale and rescanned rather than rendered. An empty result
+    is current (nothing stale to show)."""
     return all(
-        c.get('kind') in ('recurring', 'intro', 'outro') and 'prominenceDb' not in c
+        c.get('kind') in ('recurring', 'intro', 'outro')
+        and 'prominenceDb' not in c
+        and c.get('sv') == CUE_CANDIDATE_SCHEMA_VERSION
         for c in candidates
     )
 

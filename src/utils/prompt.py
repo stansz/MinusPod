@@ -34,3 +34,22 @@ def format_sponsor_block(sponsor_list: str) -> str:
     if not sponsor_list:
         return ""
     return SPONSOR_DATABASE_HEADER + sponsor_list
+
+
+OVERRIDE_HEADER = "\n\nADDITIONAL INSTRUCTIONS (these take precedence):\n"
+
+
+def apply_override(prompt: str, override: str) -> str:
+    """Inject an optional per-pass override into an already-rendered prompt.
+
+    Empty/None override leaves the prompt unchanged, so the built-in default
+    prompts render byte-identically to today. When the prompt contains an
+    ``{override}`` placeholder, the user's text is inserted there verbatim -- they
+    control its placement and the wording around it. Otherwise the override is
+    appended under a precedence header.
+    """
+    if not override or not override.strip():
+        return prompt.replace('{override}', '') if '{override}' in prompt else prompt
+    if '{override}' in prompt:
+        return prompt.replace('{override}', override)
+    return prompt + OVERRIDE_HEADER + override

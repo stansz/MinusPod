@@ -19,16 +19,34 @@ from config import (
 from audio_enforcer import content_anchors
 from database import DEFAULT_REVIEW_PROMPT, DEFAULT_RESURRECT_PROMPT
 from llm_capabilities import PASS_REVIEWER_1, PASS_REVIEWER_2
-from llm_client import get_llm_max_retries, get_llm_timeout
+from llm_client import (
+    get_llm_max_retries, get_llm_timeout, is_rate_limit_error,
+    StructuralRateLimitError,
+)
 from utils.llm_call import call_llm_for_window
 from utils.llm_response import extract_json_ads_array
-from utils.prompt import format_sponsor_block, render_prompt
+from utils.prompt import format_sponsor_block, render_prompt, apply_override
 from utils.text import get_transcript_text_for_range
 
 
 Verdict = Literal["confirmed", "adjust", "reject", "resurrect", "failure"]
 
 logger = logging.getLogger(__name__)
+
+
+def _review_failure_reason(error: Exception) -> str:
+    """Short, non-leaking reason for a failed reviewer LLM call.
+
+    The full error is logged separately; the raw provider payload (e.g. a Gemini
+    429 JSON blob) must never reach the verdict reasoning, which the UI renders.
+    StructuralRateLimitError carries our own already-sanitized, actionable text
+    (per-minute cap or daily-quota guidance), so surface it verbatim.
+    """
+    if isinstance(error, StructuralRateLimitError):
+        return f"Review unavailable: {error}"
+    if is_rate_limit_error(error):
+        return "Review unavailable: LLM rate limit reached"
+    return "Review unavailable: LLM call failed"
 
 
 def _resolve_reviewer_parallel_ads() -> int:
@@ -478,7 +496,7 @@ class AdReviewer:
                 ReviewVerdict(
                     pool=pool, pass_num=pass_num, verdict="failure",
                     original_start=original_start, original_end=original_end,
-                    reasoning=f"LLM call failed: {error}",
+                    reasoning=_review_failure_reason(error),
                     model_used=model, latency_ms=latency_ms, success=False,
                 ),
                 ad,
@@ -751,11 +769,16 @@ class AdReviewer:
                 f"end must be within {max_shift} seconds of the "
                 f"original detected boundaries."
             )
-        return rendered
+        return self._apply_pass_override(rendered, "review_prompt_override")
 
     def _render_resurrect_prompt(self, sponsor_block: str) -> str:
         prompt = self._read_setting("resurrect_prompt") or DEFAULT_RESURRECT_PROMPT
-        return render_prompt(prompt, sponsor_database=sponsor_block)
+        rendered = render_prompt(prompt, sponsor_database=sponsor_block)
+        return self._apply_pass_override(rendered, "resurrect_prompt_override")
+
+    def _apply_pass_override(self, rendered: str, setting_key: str) -> str:
+        """Append the user's per-pass override (empty by default -> no change)."""
+        return apply_override(rendered, self._read_setting(setting_key))
 
     def _sponsor_list_or_empty(self) -> str:
         if not self.sponsor_service:

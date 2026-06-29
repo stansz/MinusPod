@@ -14,13 +14,14 @@ from typing import List, Dict, Optional, NamedTuple
 from cancel import _check_cancel
 from llm_client import (
     get_llm_client, get_api_key, LLMClient,
-    is_retryable_error, is_not_found_error,
+    is_retryable_error, is_not_found_error, is_rate_limit_error,
     get_llm_timeout, get_llm_max_retries,
     get_effective_provider, model_matches_provider,
+    StructuralRateLimitError,
 )
 from utils.language import get_pattern_language
 from utils.llm_call import call_llm_for_window
-from utils.prompt import format_sponsor_block, render_prompt
+from utils.prompt import format_sponsor_block, render_prompt, apply_override
 from utils.time import overlap_ratio
 
 from config import (
@@ -196,7 +197,14 @@ def _all_windows_failed_response(stage: str, num_windows: int, last_error, model
     if last_err_status:
         parts.append(f", status={last_err_status}")
     if last_error:
-        parts.append(f": {last_error}")
+        if isinstance(last_error, StructuralRateLimitError):
+            # Our own sanitized, actionable text (per-minute cap / daily quota).
+            parts.append(f": {last_error}")
+        elif is_rate_limit_error(last_error):
+            # Hide the raw provider 429 payload from the episode error message (#435).
+            parts.append(": provider rate limit reached")
+        else:
+            parts.append(f": {last_error}")
     parts.append(")")
     not_found_hint = _model_not_found_hint(last_error, model)
     if not_found_hint:
@@ -387,30 +395,41 @@ class AdDetector:
             pass
         return self.get_model()
 
+    def _apply_pass_override(self, rendered: str, setting_key: str) -> str:
+        """Append the user's per-pass override (empty by default -> no change)."""
+        try:
+            override = self.db.get_setting(setting_key)
+        except Exception:
+            override = None
+        return apply_override(rendered, override)
+
     def get_system_prompt(self) -> str:
         """Get system prompt from database or default, with dynamic sponsors substituted."""
         self._ensure_deps()
+        prompt = None
         try:
             prompt = self.db.get_setting('system_prompt')
-            if prompt:
-                return self._render_with_sponsors(prompt)
         except Exception as e:
             logger.warning(f"Could not load system prompt from DB: {e}")
-
-        from utils.constants import DEFAULT_SYSTEM_PROMPT
-        return self._render_with_sponsors(DEFAULT_SYSTEM_PROMPT)
+        if not prompt:
+            from utils.constants import DEFAULT_SYSTEM_PROMPT
+            prompt = DEFAULT_SYSTEM_PROMPT
+        return self._apply_pass_override(
+            self._render_with_sponsors(prompt), 'system_prompt_override')
 
     def get_verification_prompt(self) -> str:
         """Get verification prompt from database or default, with dynamic sponsors substituted."""
         self._ensure_deps()
+        prompt = None
         try:
             prompt = self.db.get_setting('verification_prompt')
-            if prompt:
-                return self._render_with_sponsors(prompt)
-        except Exception:
-            pass
-        from database import DEFAULT_VERIFICATION_PROMPT
-        return self._render_with_sponsors(DEFAULT_VERIFICATION_PROMPT)
+        except Exception as e:
+            logger.warning(f"Could not load verification prompt from DB: {e}")
+        if not prompt:
+            from database import DEFAULT_VERIFICATION_PROMPT
+            prompt = DEFAULT_VERIFICATION_PROMPT
+        return self._apply_pass_override(
+            self._render_with_sponsors(prompt), 'verification_prompt_override')
 
     def _get_sponsor_list_safely(self) -> str:
         """Pull the dynamic sponsor list, returning empty string on any error."""

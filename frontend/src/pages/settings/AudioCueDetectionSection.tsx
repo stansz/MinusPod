@@ -1,6 +1,6 @@
 import CollapsibleSection from '../../components/CollapsibleSection';
 import ToggleSwitch from '../../components/ToggleSwitch';
-import { clampNumericInput } from '../../utils/clampNumericInput';
+import NumberInput from '../../components/NumberInput';
 
 export interface AudioCueState {
   enabled: boolean;
@@ -9,6 +9,7 @@ export interface AudioCueState {
   prominenceDb: number;
   minConfidence: number;
   templateScore: number;
+  formantAttenDb: number;
   createFromPairs: boolean;
   snapConfidence: number;
   captureMinSeconds: number;
@@ -28,6 +29,7 @@ interface AudioCueDetectionSectionProps {
 
 type NumericKey =
   | 'freqMinHz' | 'freqMaxHz' | 'prominenceDb' | 'minConfidence' | 'templateScore'
+  | 'formantAttenDb'
   | 'snapConfidence' | 'captureMinSeconds' | 'captureMaxSeconds'
   | 'captureMaxIntroSeconds' | 'captureMaxOutroSeconds'
   | 'pairConfidence' | 'pairMinBreakSeconds' | 'pairMaxBreakSeconds'
@@ -41,18 +43,6 @@ function AudioCueDetectionSection({ audioCue, onChange }: AudioCueDetectionSecti
   const update = <K extends keyof AudioCueState>(key: K, value: AudioCueState[K]) =>
     onChange({ ...audioCue, [key]: value });
 
-  const numUpdate = (
-    key: NumericKey,
-    raw: string,
-    lo: number,
-    hi: number,
-    fallback: number,
-    parse: (s: string) => number,
-  ) => {
-    const v = clampNumericInput(raw, lo, hi, fallback, parse);
-    if (v !== undefined) update(key, v);
-  };
-
   const numRow = (
     key: NumericKey, id: string, label: string,
     lo: number, hi: number, step: number, fallback: number, hint: string,
@@ -61,15 +51,15 @@ function AudioCueDetectionSection({ audioCue, onChange }: AudioCueDetectionSecti
     <div>
       <label htmlFor={id} className="block text-sm font-medium text-foreground mb-2">{label}</label>
       <div className="flex items-center gap-3">
-        <input
-          type="number"
+        <NumberInput
           id={id}
           value={audioCue[key]}
           min={lo}
           max={hi}
           step={step}
-          onChange={(e) => numUpdate(key, e.target.value, lo, hi, fallback, parse)}
-          className="w-24 px-3 py-1.5 rounded-lg border border-input bg-background text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring"
+          fallback={fallback}
+          parse={parse}
+          onCommit={(v) => update(key, v)}
         />
         <span className="text-sm text-muted-foreground">{lo} to {hi}</span>
       </div>
@@ -104,26 +94,28 @@ function AudioCueDetectionSection({ audioCue, onChange }: AudioCueDetectionSecti
             <div>
               <span className="block text-sm font-medium text-foreground mb-2">Frequency band</span>
               <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  aria-label="Band low edge in Hz"
+                <NumberInput
+                  ariaLabel="Band low edge in Hz"
                   value={audioCue.freqMinHz}
-                  onChange={(e) => numUpdate('freqMinHz', e.target.value, 20, 20000, 1500, (s) => parseInt(s, 10))}
                   min={20}
                   max={20000}
                   step={50}
+                  fallback={1500}
+                  parse={(s) => parseInt(s, 10)}
                   className={inputClass}
+                  onCommit={(v) => update('freqMinHz', v)}
                 />
                 <span className="text-sm text-muted-foreground">to</span>
-                <input
-                  type="number"
-                  aria-label="Band high edge in Hz"
+                <NumberInput
+                  ariaLabel="Band high edge in Hz"
                   value={audioCue.freqMaxHz}
-                  onChange={(e) => numUpdate('freqMaxHz', e.target.value, 20, 20000, 8000, (s) => parseInt(s, 10))}
                   min={20}
                   max={20000}
                   step={50}
+                  fallback={8000}
+                  parse={(s) => parseInt(s, 10)}
                   className={inputClass}
+                  onCommit={(v) => update('freqMaxHz', v)}
                 />
                 <span className="text-sm text-muted-foreground">Hz</span>
               </div>
@@ -137,15 +129,14 @@ function AudioCueDetectionSection({ audioCue, onChange }: AudioCueDetectionSecti
                 Prominence threshold
               </label>
               <div className="flex items-center gap-3">
-                <input
-                  type="number"
+                <NumberInput
                   id="audioCueProminence"
                   value={audioCue.prominenceDb}
-                  onChange={(e) => numUpdate('prominenceDb', e.target.value, 1, 40, 9, parseFloat)}
                   min={1}
                   max={40}
                   step={0.5}
-                  className="w-24 px-3 py-1.5 rounded-lg border border-input bg-background text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring"
+                  fallback={9}
+                  onCommit={(v) => update('prominenceDb', v)}
                 />
                 <span className="text-sm text-muted-foreground">dB above baseline (1-40)</span>
               </div>
@@ -159,15 +150,14 @@ function AudioCueDetectionSection({ audioCue, onChange }: AudioCueDetectionSecti
                 Minimum confidence
               </label>
               <div className="flex items-center gap-3">
-                <input
-                  type="number"
+                <NumberInput
                   id="audioCueMinConfidence"
                   value={audioCue.minConfidence}
-                  onChange={(e) => numUpdate('minConfidence', e.target.value, 0, 1, 0.8, parseFloat)}
                   min={0}
                   max={1}
                   step={0.05}
-                  className="w-24 px-3 py-1.5 rounded-lg border border-input bg-background text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring"
+                  fallback={0.8}
+                  onCommit={(v) => update('minConfidence', v)}
                 />
                 <span className="text-sm text-muted-foreground">0-1</span>
               </div>
@@ -181,15 +171,14 @@ function AudioCueDetectionSection({ audioCue, onChange }: AudioCueDetectionSecti
                 Template match score
               </label>
               <div className="flex items-center gap-3">
-                <input
-                  type="number"
+                <NumberInput
                   id="audioCueTemplateScore"
                   value={audioCue.templateScore}
-                  onChange={(e) => numUpdate('templateScore', e.target.value, 0, 0.99, 0.75, parseFloat)}
                   min={0}
                   max={0.99}
                   step={0.05}
-                  className="w-24 px-3 py-1.5 rounded-lg border border-input bg-background text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring"
+                  fallback={0.75}
+                  onCommit={(v) => update('templateScore', v)}
                 />
                 <span className="text-sm text-muted-foreground">0-0.99</span>
               </div>
@@ -200,6 +189,8 @@ function AudioCueDetectionSection({ audioCue, onChange }: AudioCueDetectionSecti
 
             <div className="border-t border-border pt-4 space-y-5">
               <span className="block text-sm font-medium text-foreground">Advanced tuning</span>
+              {numRow('formantAttenDb', 'audioCueFormantAttenDb', 'Voiceover attenuation (dB)', 0, 24, 1, 0,
+                'When a saved cue is music under a voiceover that varies per episode, attenuate the 800-3400 Hz speech band so matching keys on the constant bed. 0 = off. Only that band is touched, so bass beds and high chimes are unaffected.')}
               {numRow('snapConfidence', 'audioCueSnapConfidence', 'Snap confidence floor', 0, 1, 0.05, 0.8,
                 'Minimum cue confidence before a cue may move an ad edge. Higher is stricter.')}
               {numRow('captureMinSeconds', 'audioCueCaptureMinSeconds', 'Capture minimum length (s)', 0.05, 10, 0.05, 0.2,
@@ -219,24 +210,24 @@ function AudioCueDetectionSection({ audioCue, onChange }: AudioCueDetectionSecti
               {numRow('pairMaxBreakFraction', 'audioCuePairMaxBreakFraction', 'Cue-pair maximum break (fraction of episode)', 0, 1, 0.05, 0.5,
                 'Reject a cue pair spanning more than this fraction of the episode. A short-episode backstop against a pair bracketing most of the show. 0 disables it.')}
             </div>
+
+            <div className="border-t border-border pt-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <ToggleSwitch
+                  checked={audioCue.createFromPairs}
+                  onChange={(v) => update('createFromPairs', v)}
+                  ariaLabel="Create ads from cue pairs"
+                />
+                <span className="text-sm font-medium text-foreground">
+                  Create ads from cue pairs
+                </span>
+              </label>
+              <p className="mt-2 text-sm text-muted-foreground ml-14">
+                When two high-confidence cues bracket a break the model missed, create a cue-only ad for the reviewer to check. Off by default - turn it on once you trust the matcher on this feed.
+              </p>
+            </div>
           </div>
         )}
-
-        <div className="border-t border-border pt-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <ToggleSwitch
-              checked={audioCue.createFromPairs}
-              onChange={(v) => update('createFromPairs', v)}
-              ariaLabel="Create ads from cue pairs"
-            />
-            <span className="text-sm font-medium text-foreground">
-              Create ads from cue pairs when the LLM misses a break
-            </span>
-          </label>
-          <p className="mt-2 text-sm text-muted-foreground ml-14">
-            When two high-confidence cues bracket a break the model missed, create a cue-only ad for the reviewer to check. Off by default - turn it on once you trust the matcher on this feed.
-          </p>
-        </div>
       </div>
     </CollapsibleSection>
   );

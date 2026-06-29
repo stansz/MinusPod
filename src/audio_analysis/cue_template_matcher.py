@@ -30,9 +30,12 @@ from .base import AudioSegmentSignal, SignalType
 from .cue_features import (
     FRAME_HOP_MS,
     SAMPLE_RATE_HZ,
+    FORMANT_LO_HZ,
+    FORMANT_HI_HZ,
     compute_mfcc,
     decode_pcm_window,
     deserialize_mfcc,
+    int16_bytes_to_pcm,
 )
 from utils.audio import get_audio_duration
 
@@ -70,13 +73,38 @@ class AudioCueTemplateMatcher:
         templates: List[Dict],
         score_threshold: float = DEFAULT_MATCH_SCORE,
         max_matches_per_template: int = MAX_MATCHES_PER_TEMPLATE,
+        formant_atten_db: float = 0.0,
+        formant_lo_hz: float = FORMANT_LO_HZ,
+        formant_hi_hz: float = FORMANT_HI_HZ,
     ):
         self.score_threshold = score_threshold
         self.max_matches_per_template = max_matches_per_template
+        # Global voiceover-robust profile (#350); 0 dB = off = un-weighted MFCC.
+        self._formant_atten_db = float(formant_atten_db)
+        self._formant_lo_hz = float(formant_lo_hz)
+        self._formant_hi_hz = float(formant_hi_hz)
         self._templates: List[_Template] = []
         for row in templates:
             try:
-                mfcc = deserialize_mfcc(row['mfcc_blob'], int(row['n_coeffs']))
+                n_coeffs = int(row['n_coeffs'])
+                mfcc = None
+                if self._formant_atten_db > 0 and row.get('pcm_blob'):
+                    # Re-derive the MFCC from the stored PCM under the formant
+                    # profile so template and target share the same weighting (the
+                    # stored mfcc_blob was computed at 0 dB). On any failure fall
+                    # back to that stored blob rather than dropping the template.
+                    try:
+                        mfcc = compute_mfcc(
+                            int16_bytes_to_pcm(row['pcm_blob']), n_coeffs=n_coeffs,
+                            formant_atten_db=self._formant_atten_db,
+                            formant_lo_hz=self._formant_lo_hz, formant_hi_hz=self._formant_hi_hz)
+                    except Exception as e:
+                        logger.warning(
+                            "Cue template %s: formant re-derivation failed (%s); "
+                            "using stored MFCC", row.get('id'), e)
+                        mfcc = None
+                if mfcc is None:
+                    mfcc = deserialize_mfcc(row['mfcc_blob'], n_coeffs)
             except (ValueError, KeyError) as e:
                 logger.warning(
                     f"Skipping cue template {row.get('id')}: bad mfcc blob ({e})"
@@ -94,7 +122,7 @@ class AudioCueTemplateMatcher:
                 label=row.get('label') or f"template-{row['id']}",
                 mfcc=mfcc,
                 duration_s=float(row['duration_s']),
-                n_coeffs=int(row['n_coeffs']),
+                n_coeffs=n_coeffs,
                 cue_type=cue_type,
                 role=audio_cue_type_role(cue_type),
             ))
@@ -159,7 +187,9 @@ class AudioCueTemplateMatcher:
             except RuntimeError as e:
                 logger.warning(f"Cue chunk decode failed at {chunk_start:.1f}s: {e}")
                 break
-            chunk_mfcc = compute_mfcc(pcm)
+            chunk_mfcc = compute_mfcc(
+                pcm, formant_atten_db=self._formant_atten_db,
+                formant_lo_hz=self._formant_lo_hz, formant_hi_hz=self._formant_hi_hz)
             if chunk_mfcc.shape[0]:
                 self._scan_chunk(
                     chunk_mfcc, chunk_start,

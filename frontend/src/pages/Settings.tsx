@@ -63,6 +63,8 @@ function Settings() {
 
   const [systemPrompt, setSystemPrompt] = useState('');
   const [verificationPrompt, setVerificationPrompt] = useState('');
+  const [systemPromptOverride, setSystemPromptOverride] = useState('');
+  const [verificationPromptOverride, setVerificationPromptOverride] = useState('');
   // Form state holds no hardcoded defaults: every field is hydrated from the
   // loaded settings (or the backend-provided `settings.defaults.*`) before the
   // form renders (the page returns a loader while `settingsLoading`, and the
@@ -74,6 +76,8 @@ function Settings() {
     maxShift: 0,
     reviewPrompt: '',
     resurrectPrompt: '',
+    reviewPromptOverride: '',
+    resurrectPromptOverride: '',
     parallelAds: 0,
     // From the separate /settings/reviewer endpoint (reviewerSettings query),
     // merged into this section so the page Save persists everything together.
@@ -87,6 +91,7 @@ function Settings() {
     prominenceDb: 9,
     minConfidence: 0.8,
     templateScore: 0.75,
+    formantAttenDb: 0,
     createFromPairs: false,
     snapConfidence: 0.8,
     captureMinSeconds: 0.2,
@@ -364,6 +369,8 @@ function Settings() {
       const d = settings.defaults;
       setSystemPrompt(settings.systemPrompt?.value || '');
       setVerificationPrompt(settings.verificationPrompt?.value || '');
+      setSystemPromptOverride(settings.systemPromptOverride?.value || '');
+      setVerificationPromptOverride(settings.verificationPromptOverride?.value || '');
       // Spread prev so the pattern-update fields seeded from the separate
       // reviewerSettings query (see useSyncFromQuery below) are preserved.
       setReviewer((prev) => ({
@@ -373,6 +380,8 @@ function Settings() {
         maxShift: settings.reviewMaxBoundaryShift?.value ?? d.reviewMaxBoundaryShift,
         reviewPrompt: settings.reviewPrompt?.value || '',
         resurrectPrompt: settings.resurrectPrompt?.value || '',
+        reviewPromptOverride: settings.reviewPromptOverride?.value || '',
+        resurrectPromptOverride: settings.resurrectPromptOverride?.value || '',
         parallelAds: settings.adReviewerParallelAds?.value ?? d.adReviewerParallelAds,
       }));
       setSelectedModel(settings.claudeModel?.value || '');
@@ -393,6 +402,7 @@ function Settings() {
         prominenceDb: settings.audioCueProminenceDb?.value ?? d.audioCueProminenceDb,
         minConfidence: settings.audioCueMinConfidence?.value ?? d.audioCueMinConfidence,
         templateScore: settings.audioCueTemplateScore?.value ?? d.audioCueTemplateScore ?? 0.75,
+        formantAttenDb: settings.audioCueFormantAttenDb?.value ?? d.audioCueFormantAttenDb ?? 0,
         createFromPairs: settings.audioCueCreateFromPairs?.value ?? d.audioCueCreateFromPairs ?? false,
         snapConfidence: settings.audioCueSnapConfidence?.value ?? d.audioCueSnapConfidence ?? 0.8,
         captureMinSeconds: settings.audioCueCaptureMinSeconds?.value ?? d.audioCueCaptureMinSeconds ?? 0.2,
@@ -445,8 +455,12 @@ function Settings() {
     // flips permanently true, and Save Changes never goes away (#234 follow-up).
     if (systemPrompt !== (settings.systemPrompt?.value || '')) payload.systemPrompt = systemPrompt;
     if (verificationPrompt !== (settings.verificationPrompt?.value || '')) payload.verificationPrompt = verificationPrompt;
+    if (systemPromptOverride !== (settings.systemPromptOverride?.value || '')) payload.systemPromptOverride = systemPromptOverride;
+    if (verificationPromptOverride !== (settings.verificationPromptOverride?.value || '')) payload.verificationPromptOverride = verificationPromptOverride;
     if (reviewer.reviewPrompt !== (settings.reviewPrompt?.value || '')) payload.reviewPrompt = reviewer.reviewPrompt;
     if (reviewer.resurrectPrompt !== (settings.resurrectPrompt?.value || '')) payload.resurrectPrompt = reviewer.resurrectPrompt;
+    if (reviewer.reviewPromptOverride !== (settings.reviewPromptOverride?.value || '')) payload.reviewPromptOverride = reviewer.reviewPromptOverride;
+    if (reviewer.resurrectPromptOverride !== (settings.resurrectPromptOverride?.value || '')) payload.resurrectPromptOverride = reviewer.resurrectPromptOverride;
     if (reviewer.enabled !== (settings.enableAdReview?.value ?? d.enableAdReview)) payload.enableAdReview = reviewer.enabled;
     if (reviewer.model !== (settings.reviewModel?.value || d.reviewModel)) payload.reviewModel = reviewer.model;
     if (reviewer.maxShift !== (settings.reviewMaxBoundaryShift?.value ?? d.reviewMaxBoundaryShift)) payload.reviewMaxBoundaryShift = reviewer.maxShift;
@@ -457,6 +471,7 @@ function Settings() {
     if (audioCue.prominenceDb !== (settings.audioCueProminenceDb?.value ?? d.audioCueProminenceDb)) payload.audioCueProminenceDb = audioCue.prominenceDb;
     if (audioCue.minConfidence !== (settings.audioCueMinConfidence?.value ?? d.audioCueMinConfidence)) payload.audioCueMinConfidence = audioCue.minConfidence;
     if (audioCue.templateScore !== (settings.audioCueTemplateScore?.value ?? d.audioCueTemplateScore ?? 0.75)) payload.audioCueTemplateScore = audioCue.templateScore;
+    if (audioCue.formantAttenDb !== (settings.audioCueFormantAttenDb?.value ?? d.audioCueFormantAttenDb ?? 0)) payload.audioCueFormantAttenDb = audioCue.formantAttenDb;
     if (audioCue.createFromPairs !== (settings.audioCueCreateFromPairs?.value ?? d.audioCueCreateFromPairs ?? false)) payload.audioCueCreateFromPairs = audioCue.createFromPairs;
     if (audioCue.snapConfidence !== (settings.audioCueSnapConfidence?.value ?? d.audioCueSnapConfidence ?? 0.8)) payload.audioCueSnapConfidence = audioCue.snapConfidence;
     if (audioCue.captureMinSeconds !== (settings.audioCueCaptureMinSeconds?.value ?? d.audioCueCaptureMinSeconds ?? 0.2)) payload.audioCueCaptureMinSeconds = audioCue.captureMinSeconds;
@@ -512,7 +527,7 @@ function Settings() {
     if (reviewerPatternsChanged()) return true;
     return podcastIndexApiKey !== '' && podcastIndexApiSecret !== '';
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [systemPrompt, verificationPrompt, reviewer, audioCue, positionalPriorEnabled, selectedModel, verificationModel, whisperModel, autoProcessEnabled, maxFeedEpisodes, onlyExposeProcessedDefault, artworkWatermarkEnabled, audioBitrate, audioNormalizeEnabled, audioNormalizeIntensity, skipFlacCompression, vttTranscriptsEnabled, chaptersEnabled, chaptersModel, minCutConfidence, llmProvider, openaiBaseUrl, whisperBackend, whisperApiConfig.baseUrl, whisperApiConfig.model, whisperLanguage, whisperComputeType, transcribeMaxChunkSeconds, transcribeConcurrentChunks, transcribeChunkOverlapSeconds, podcastIndexApiKey, podcastIndexApiSecret, settings, reviewerSettings]);
+  }, [systemPrompt, verificationPrompt, systemPromptOverride, verificationPromptOverride, reviewer, audioCue, positionalPriorEnabled, selectedModel, verificationModel, whisperModel, autoProcessEnabled, maxFeedEpisodes, onlyExposeProcessedDefault, artworkWatermarkEnabled, audioBitrate, audioNormalizeEnabled, audioNormalizeIntensity, skipFlacCompression, vttTranscriptsEnabled, chaptersEnabled, chaptersModel, minCutConfidence, llmProvider, openaiBaseUrl, whisperBackend, whisperApiConfig.baseUrl, whisperApiConfig.model, whisperLanguage, whisperComputeType, transcribeMaxChunkSeconds, transcribeConcurrentChunks, transcribeChunkOverlapSeconds, podcastIndexApiKey, podcastIndexApiSecret, settings, reviewerSettings]);
 
   // Mirror hasChanges into render-readable state so the hydration guard above
   // (which runs before hasChanges is defined) skips re-seeding while dirty.
@@ -813,8 +828,12 @@ function Settings() {
       <PromptsSection
         systemPrompt={systemPrompt}
         verificationPrompt={verificationPrompt}
+        systemPromptOverride={systemPromptOverride}
+        verificationPromptOverride={verificationPromptOverride}
         onSystemPromptChange={setSystemPrompt}
         onVerificationPromptChange={setVerificationPrompt}
+        onSystemPromptOverrideChange={setSystemPromptOverride}
+        onVerificationPromptOverrideChange={setVerificationPromptOverride}
         onResetPrompts={() => resetPromptsMutation.mutate()}
         resetIsPending={resetPromptsMutation.isPending}
       />

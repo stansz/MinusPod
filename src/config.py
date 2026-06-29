@@ -191,6 +191,12 @@ AUDIO_CUE_ONSET_LAG_SECONDS = 0.2    # ebur128 momentary loudness integrates ove
 # dip below 0.85 with background beds) against false positives (non-cue audio
 # sits near 0.0). Tuneable via the audio_cue_template_score DB setting.
 AUDIO_CUE_TEMPLATE_SCORE = 0.75
+# Voiceover-robust matching (#350): global formant-band (800-3400 Hz) attenuation
+# in dB applied to saved-template matching so a cue keys on its constant music bed
+# despite a varying voiceover. 0.0 = off (default; existing/ding/full-spectrum cues
+# unchanged). A per-template formant_atten_db column overrides this. ~9-12 dB is a
+# typical opt-in for a music-bed cue. DB-settable via audio_cue_formant_atten_db.
+AUDIO_CUE_FORMANT_ATTEN_DB = 0.0
 
 # Cue boundary snap + cue-pair synthesis tunables (#350). All DB-settable so a
 # show with a noisy cue or unusual break lengths can be tuned without a code
@@ -249,6 +255,19 @@ AUDIO_CUE_FP_MAX_COUNT = 30              # >this many repeats is pervasive fille
 AUDIO_CUE_FP_MAX_LEN_SECONDS = 30.0      # cap on segment-length extension
 AUDIO_CUE_FP_MAX_ANCHORS = 600           # cap on anchors scanned (bounds long-episode work)
 AUDIO_CUE_FP_MAX_CANDIDATES = 10         # cap on candidates returned to the UI
+# Music/speech discriminator for WITHIN-episode recurring candidates (#350). A
+# common spoken phrase repeats like a sting but reads as speech: its energy sits
+# in the formant band, it is not tonal, and it is gappy. A produced sting (even a
+# bass jingle with voiceover) is tonal and/or sustained with energy outside the
+# band. Drop a recurring candidate only when ALL speech-like conditions hold, so
+# musical cues are kept. Anchored to the measured WSJ content-transition cue
+# (speech-band ratio 0.32, flatness 0.0003, sustained 0.90 -> kept). Applied to
+# recurring candidates only; cross-episode intro/outro (often spoken) is exempt.
+AUDIO_CUE_SPEECH_BAND_LO_HZ = 300.0      # formant-band lower edge for the energy ratio
+AUDIO_CUE_SPEECH_BAND_HI_HZ = 3400.0     # formant-band upper edge
+AUDIO_CUE_SPEECH_BAND_RATIO_MAX = 0.55   # formant-band energy share above this looks like talking
+AUDIO_CUE_SPEECH_FLATNESS_MIN = 0.02     # spectral flatness above this is non-tonal (speech/noise)
+AUDIO_CUE_SPEECH_SUSTAINED_MAX = 0.65    # sustained-energy fraction below this is gappy (speech)
 # Generous loudness discovery profile for the capture-UI loud spots (the
 # template-free "jump to a loud spot" markers), separate from the precise
 # live-detection band above. Real ad-break sounds are often sustained,

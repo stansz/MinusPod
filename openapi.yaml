@@ -12,7 +12,7 @@ info:
     - Monitor system status and trigger cleanup operations
     - Manage cross-episode ad patterns with network and podcast scope
     - Submit corrections to improve ad detection accuracy
-  version: 2.27.3
+  version: 2.29.1
   contact:
     name: MinusPod
   license:
@@ -3027,6 +3027,15 @@ paths:
                   description: ZNCC score a learned cue template must reach on another episode (default 0.75).
                   minimum: 0
                   maximum: 0.99
+                audioCueFormantAttenDb:
+                  type: number
+                  description: >-
+                    Voiceover-robust matching (#350). Attenuates the 800-3400 Hz speech-formant band in
+                    dB during cue-template matching so a cue keys on its constant music bed despite a
+                    varying voiceover. 0 disables it (default); existing/ding/full-spectrum cues are
+                    unchanged. A per-template override may supersede this. Typical opt-in ~9-12.
+                  minimum: 0
+                  maximum: 24
                 audioCueSnapConfidence:
                   type: number
                   description: Min cue confidence before a cue may move an ad edge (default 0.80).
@@ -5916,6 +5925,41 @@ components:
               type: string
             isDefault:
               type: boolean
+        systemPromptOverride:
+          type: object
+          description: |
+            Optional per-pass override appended to the first-pass prompt at run
+            time (empty by default, leaving the default prompt unchanged). If the
+            prompt contains an {override} placeholder it is substituted there.
+          properties:
+            value:
+              type: string
+            isDefault:
+              type: boolean
+        verificationPromptOverride:
+          type: object
+          description: Optional per-pass override appended to the verification prompt (empty by default).
+          properties:
+            value:
+              type: string
+            isDefault:
+              type: boolean
+        reviewPromptOverride:
+          type: object
+          description: Optional per-pass override appended to the reviewer prompt (empty by default).
+          properties:
+            value:
+              type: string
+            isDefault:
+              type: boolean
+        resurrectPromptOverride:
+          type: object
+          description: Optional per-pass override appended to the resurrect prompt (empty by default).
+          properties:
+            value:
+              type: string
+            isDefault:
+              type: boolean
         claudeModel:
           type: object
           properties:
@@ -6036,6 +6080,14 @@ components:
         audioCueTemplateScore:
           type: object
           description: ZNCC score (0-0.99, default 0.75) a learned cue template must reach to register on another episode.
+          properties:
+            value:
+              type: number
+            isDefault:
+              type: boolean
+        audioCueFormantAttenDb:
+          type: object
+          description: Speech-formant-band attenuation in dB for voiceover-robust cue matching (#350). 0 = off (default).
           properties:
             value:
               type: number
@@ -6279,6 +6331,18 @@ components:
               type: string
             verificationPrompt:
               type: string
+            systemPromptOverride:
+              type: string
+              description: Per-pass override for the first pass; empty clears it.
+            verificationPromptOverride:
+              type: string
+              description: Per-pass override for the verification pass; empty clears it.
+            reviewPromptOverride:
+              type: string
+              description: Per-pass override for the reviewer pass; empty clears it.
+            resurrectPromptOverride:
+              type: string
+              description: Per-pass override for the resurrect pass; empty clears it.
             claudeModel:
               type: string
             verificationModel:
