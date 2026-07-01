@@ -1,0 +1,102 @@
+"""Auto-suggest a cue match threshold from a distribution of occurrence scores.
+
+The matcher's ZNCC score is the stored cue confidence. Real occurrences of a
+clean cue cluster high (~0.85-0.99); the noise ceiling sits ~0.50. When the two
+clusters are cleanly separated this proposes a value in the gap. Pure function;
+no IO, unit-testable in isolation.
+"""
+from __future__ import annotations
+
+from typing import Dict, List, Optional
+
+from config import (
+    AUDIO_CUE_SUGGEST_MIN_GAP,
+    AUDIO_CUE_SUGGEST_MIN_SIGNAL,
+    AUDIO_CUE_SUGGEST_BAND,
+    AUDIO_CUE_SUGGEST_MARGIN,
+    AUDIO_CUE_EFFECT_FLOOR,
+)
+
+
+def suggest_cue_threshold(
+    occurrence_scores: List[float],
+    per_template_peaks: Optional[Dict[int, float]] = None,
+    effect_floor: float = AUDIO_CUE_EFFECT_FLOOR,
+) -> Dict:
+    """Propose a global match threshold from a list of per-occurrence scores.
+
+    Returns a dict; on a clean bimodal distribution it carries a numeric
+    ``suggested`` plus cluster stats and an ``effectFloorWarning``; otherwise a
+    low-confidence result with a ``reason``.
+    """
+    scores = sorted(float(s) for s in occurrence_scores)
+    if len(scores) < AUDIO_CUE_SUGGEST_MIN_SIGNAL:
+        return {
+            'confidence': 'low',
+            'suggested': None,
+            'reason': 'not enough cue occurrences across the sampled episodes; '
+                      'mark the cue on more episodes or scan more',
+            'scoresN': len(scores),
+        }
+
+    lo_band, hi_band = AUDIO_CUE_SUGGEST_BAND
+    # Widest consecutive gap whose lower edge sits in the plausible band.
+    best_gap = 0.0
+    best_i = -1
+    for i in range(len(scores) - 1):
+        lower = scores[i]
+        if lower < lo_band or lower > hi_band:
+            continue
+        gap = scores[i + 1] - lower
+        if gap > best_gap:
+            best_gap = gap
+            best_i = i
+
+    if best_i < 0 or best_gap < AUDIO_CUE_SUGGEST_MIN_GAP:
+        return {
+            'confidence': 'low',
+            'suggested': None,
+            'reason': 'no clear separation between noise and signal; keep the '
+                      'default or re-capture the cue',
+            'scoresN': len(scores),
+        }
+
+    noise_ceiling = scores[best_i]
+    signal_floor = scores[best_i + 1]
+    signal_count = sum(1 for s in scores if s >= signal_floor)
+    if signal_count < AUDIO_CUE_SUGGEST_MIN_SIGNAL:
+        return {
+            'confidence': 'low',
+            'suggested': None,
+            'reason': 'the high-scoring cluster is too small to trust',
+            'noiseCeiling': round(noise_ceiling, 3),
+            'signalFloor': round(signal_floor, 3),
+            'gapWidth': round(best_gap, 3),
+            'scoresN': len(scores),
+        }
+
+    midpoint = (noise_ceiling + signal_floor) / 2
+    suggested = min(
+        max(midpoint, noise_ceiling + AUDIO_CUE_SUGGEST_MARGIN),
+        signal_floor - AUDIO_CUE_SUGGEST_MARGIN,
+    )
+    suggested = round(min(max(suggested, 0.0), 0.99), 2)
+
+    if signal_floor < effect_floor:
+        warning = 'signal-below-floor'
+        confidence = 'partial'
+    else:
+        warning = None
+        confidence = 'high'
+
+    return {
+        'confidence': confidence,
+        'suggested': suggested,
+        'noiseCeiling': round(noise_ceiling, 3),
+        'signalFloor': round(signal_floor, 3),
+        'gapWidth': round(best_gap, 3),
+        'signalCount': signal_count,
+        'effectFloor': round(effect_floor, 3),
+        'effectFloorWarning': warning,
+        'scoresN': len(scores),
+    }

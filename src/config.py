@@ -288,6 +288,20 @@ AUDIO_CUE_SCAN_MAX_DURATION_SECONDS = 12.0  # allow sustained musical beds (live
 # this is treated as crashed/expired and reclaimable for a fresh run.
 AUDIO_CUE_CANDIDATE_SCAN_STALE_SECONDS = 900
 
+# Threshold auto-suggest (#350). The diagnostic sweep runs the matcher at a low
+# floor across a few episodes; the helper gap-finds between the noise cluster and
+# the signal cluster and proposes a global match-score value.
+AUDIO_CUE_SUGGEST_FLOOR = 0.35          # sweep score floor (below the ~0.5 noise ceiling)
+AUDIO_CUE_SUGGEST_MAX_EPISODES = 5      # picked episode + recent siblings to sweep
+AUDIO_CUE_SUGGEST_MIN_GAP = 0.08        # smallest empty band that counts as clean separation
+AUDIO_CUE_SUGGEST_MIN_SIGNAL = 3        # occurrences above the gap needed to trust the signal cluster
+AUDIO_CUE_SUGGEST_BAND = (0.40, 0.95)   # suggested value must fall in this band
+AUDIO_CUE_SUGGEST_MARGIN = 0.02         # keep the suggestion off both cluster edges
+# The confidence a cue must reach to affect anything downstream (LLM prompt
+# floor, hardcoded). Snap/pair use their own DB-settable floors; this is a
+# display/annotation mirror only -- do NOT rewire audio_enforcer from it here.
+AUDIO_CUE_EFFECT_FLOOR = 0.80
+
 # Keep-content (whitelist) detection mode -- OPT-IN per feed, default blacklist.
 # In this mode the LLM labels substantive show content and we remove the
 # COMPLEMENT (everything that is not content). It targets feeds with
