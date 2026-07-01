@@ -351,8 +351,7 @@ class PatternMixin:
 
         Also deletes audio_fingerprints rows that point at the doomed
         patterns; the schema does not declare an ON DELETE CASCADE on
-        `pattern_id`, so we clean up explicitly the way
-        `cleanup_service._purge_pattern` does for the single-row case.
+        `pattern_id`, so we clean them up explicitly.
         """
         conn = self.get_connection()
         conn.execute(

@@ -37,6 +37,7 @@ found by review, removes dead code, and adds the repo's first Python lint gate.
 ### Removed
 
 - Removed roughly 40 unused functions, methods, and classes across the backend and frontend: dead database helpers, transcriber and transcript methods, sponsor-service helpers, several unused API-client wrappers, and an ad-editor prop that was accepted but never read. No behavior change.
+- Removed the `CleanupService` module, an unwired scheduled-backup and retention path that was never instantiated in production. Episode retention runs through `background.py`, and manual database backups via the API are unchanged.
 
 ### Documentation
 
