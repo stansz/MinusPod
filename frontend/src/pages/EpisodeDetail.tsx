@@ -16,7 +16,8 @@ import CollapsibleSection from '../components/CollapsibleSection';
 import CueDetectionsSection from '../components/CueDetectionsSection';
 import CueCandidatesSection from '../components/CueCandidatesSection';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
-import { formatStorage } from './settings/settingsUtils';
+import { formatStorage, formatDuration } from './settings/settingsUtils';
+import { formatTimestamp } from '../utils/format';
 
 function TranscriptBlock({ text }: { text: string }) {
   return (
@@ -35,7 +36,6 @@ function EpisodeDetail() {
   const { slug, episodeId } = useParams<{ slug: string; episodeId: string }>();
   const [showEditor, setShowEditor] = useState(false);
   const [createModeRequested, setCreateModeRequested] = useState(false);
-  const [jumpToTime, setJumpToTime] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [showReprocessMenu, setShowReprocessMenu] = useState(false);
   const [editorSelectedAdIndex, setEditorSelectedAdIndex] = useState(0);
@@ -45,7 +45,7 @@ function EpisodeDetail() {
     'processed',
   );
   const [originalTranscriptRequested, setOriginalTranscriptRequested] = useLocalStorageState<boolean>(
-    'episode-original-transcript',
+    'episode-original-transcript-requested',
     false,
   );
   const editorRef = useRef<HTMLDivElement>(null);
@@ -138,13 +138,12 @@ function EpisodeDetail() {
     correctionMutation.mutate(correction);
   };
 
-  // Jump to a specific ad in the editor. Sets BOTH selected index (so the
-  // modal renders the right ad) and seek time (so audio playback lands at
-  // the ad's start). Without the index, the modal stays on whichever ad
-  // was last selected (defaulting to 0 on first open).
-  const handleJumpToAd = (adIndex: number, startTime: number) => {
+  // Jump to a specific ad in the editor. Sets the selected index so the modal
+  // renders the right ad (and its own effect seeks audio to the ad start).
+  // Without the index, the modal stays on whichever ad was last selected
+  // (defaulting to 0 on first open).
+  const handleJumpToAd = (adIndex: number) => {
     setEditorSelectedAdIndex(adIndex);
-    setJumpToTime(startTime);
     if (!showEditor) {
       setShowEditor(true);
     }
@@ -167,28 +166,6 @@ function EpisodeDetail() {
       detection_stage: marker.detection_stage || 'first_pass',
     }));
   }, [adMarkers]);
-
-  const formatDuration = (seconds?: number) => {
-    if (!seconds) return '';
-    const totalSecs = Math.floor(seconds);
-    const hours = Math.floor(totalSecs / 3600);
-    const minutes = Math.floor((totalSecs % 3600) / 60);
-    const secs = totalSecs % 60;
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const formatTimestamp = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
@@ -414,7 +391,6 @@ function EpisodeDetail() {
                 setShowEditor(false);
                 setCreateModeRequested(false);
               }}
-              saveStatus={saveStatus}
               createMode={true}
             />
           ) : (
@@ -530,8 +506,6 @@ function EpisodeDetail() {
                     setSavedScrollY(null);
                   }
                 }}
-                initialSeekTime={jumpToTime ?? undefined}
-                saveStatus={saveStatus}
                 selectedAdIndex={editorSelectedAdIndex}
                 onSelectedAdIndexChange={setEditorSelectedAdIndex}
                 createMode={createModeRequested}
@@ -595,7 +569,7 @@ function EpisodeDetail() {
                   )}
                   {episode.transcript && (
                     <button
-                      onClick={() => handleJumpToAd(index, segment.start)}
+                      onClick={() => handleJumpToAd(index)}
                       className="px-3 py-1.5 sm:px-2 sm:py-0.5 text-xs bg-primary/10 text-primary rounded hover:bg-primary/20 active:bg-primary/30 transition-colors touch-manipulation min-h-[36px] sm:min-h-0"
                       title="Jump to this ad in editor"
                     >
@@ -671,6 +645,17 @@ function EpisodeDetail() {
               >
                 {(() => {
                   const correction = getAdCorrection(segment.start, segment.end);
+                  // Match on the full identity, not just start/end, so two
+                  // rejected markers that happen to share boundaries don't both
+                  // light up when only one is being saved.
+                  const mutAd = correctionMutation.variables?.originalAd;
+                  const rowStatus: SaveStatus =
+                    mutAd?.start === segment.start &&
+                    mutAd?.end === segment.end &&
+                    mutAd?.confidence === segment.confidence &&
+                    mutAd?.reason === (segment.reason || '')
+                      ? saveStatus
+                      : 'idle';
                   return (
                     <>
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -727,14 +712,14 @@ function EpisodeDetail() {
                             })}
                             disabled={correctionMutation.isPending}
                             className={`flex-1 sm:flex-none px-3 py-2 sm:py-1.5 text-sm sm:text-xs rounded disabled:opacity-50 transition-colors touch-manipulation min-h-[40px] sm:min-h-0 ${
-                              saveStatus === 'success' ? 'bg-green-700 text-white' :
-                              saveStatus === 'error' ? 'bg-red-600 text-white' :
+                              rowStatus === 'success' ? 'bg-green-700 text-white' :
+                              rowStatus === 'error' ? 'bg-red-600 text-white' :
                               'bg-green-600 hover:bg-green-700 active:bg-green-800 text-white'
                             }`}
                           >
-                            {saveStatus === 'saving' ? 'Saving...' :
-                             saveStatus === 'success' ? 'Saved!' :
-                             saveStatus === 'error' ? 'Error!' :
+                            {rowStatus === 'saving' ? 'Saving...' :
+                             rowStatus === 'success' ? 'Saved!' :
+                             rowStatus === 'error' ? 'Error!' :
                              'Confirm as Ad'}
                           </button>
                           <button
@@ -749,14 +734,14 @@ function EpisodeDetail() {
                             })}
                             disabled={correctionMutation.isPending}
                             className={`flex-1 sm:flex-none px-3 py-2 sm:py-1.5 text-sm sm:text-xs rounded disabled:opacity-50 transition-colors touch-manipulation min-h-[40px] sm:min-h-0 ${
-                              saveStatus === 'success' ? 'bg-green-700 text-white' :
-                              saveStatus === 'error' ? 'bg-red-600 text-white' :
+                              rowStatus === 'success' ? 'bg-green-700 text-white' :
+                              rowStatus === 'error' ? 'bg-red-600 text-white' :
                               'bg-destructive hover:bg-destructive/90 active:bg-destructive/80 text-destructive-foreground'
                             }`}
                           >
-                            {saveStatus === 'saving' ? 'Saving...' :
-                             saveStatus === 'success' ? 'Saved!' :
-                             saveStatus === 'error' ? 'Error!' :
+                            {rowStatus === 'saving' ? 'Saving...' :
+                             rowStatus === 'success' ? 'Saved!' :
+                             rowStatus === 'error' ? 'Error!' :
                              'Not an Ad'}
                           </button>
                         </div>

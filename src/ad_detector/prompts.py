@@ -11,11 +11,7 @@ from typing import List, Dict
 from sponsor_service import SponsorService
 from utils.prompt import format_sponsor_block, render_prompt
 from utils.time import parse_timestamp
-from utils.llm_response import (
-    extract_json_ads_array,
-    extract_json_object,
-    find_json_array_candidates as _find_json_array_candidates,
-)
+from utils.llm_response import extract_json_ads_array
 from utils.constants import (
     INVALID_SPONSOR_VALUES, STRUCTURAL_FIELDS,
     SPONSOR_PRIORITY_FIELDS, SPONSOR_PATTERN_KEYWORDS,
@@ -323,7 +319,8 @@ def parse_ads_from_response(response_text: str, slug: str = None,
                     # Extract sponsor/advertiser name using priority fields + pattern matching
                     # Try extract_sponsor_name first for a real sponsor name.
                     # If it returns the default, fall back to Claude's raw reason.
-                    reason = extract_sponsor_name(ad)
+                    sponsor_name = extract_sponsor_name(ad)
+                    reason = sponsor_name
                     existing_reason = ad.get('reason')
                     if reason == 'Advertisement detected':
                         if existing_reason and isinstance(existing_reason, str) and len(existing_reason) > 3:
@@ -405,7 +402,7 @@ def parse_ads_from_response(response_text: str, slug: str = None,
                             )
                             continue
                         # For shorter segments without evidence, log warning but allow through
-                        elif duration >= LOW_EVIDENCE_WARN_THRESHOLD:
+                        if duration >= LOW_EVIDENCE_WARN_THRESHOLD:
                             logger.warning(
                                 f"[{slug}:{episode_id}] Low-confidence ad (no sponsor found): "
                                 f"{start:.1f}s-{end:.1f}s ({duration:.0f}s) - "
@@ -421,7 +418,7 @@ def parse_ads_from_response(response_text: str, slug: str = None,
                         'end_text': ad.get('end_text') or ''
                     }
                     # Store sponsor name separately for UI display
-                    sponsor_name = extract_sponsor_name(ad)
+                    # (reuses sponsor_name captured above; ad is unmutated between)
                     if sponsor_name and sponsor_name != 'Advertisement detected':
                         ad_entry['sponsor'] = sponsor_name
                     valid_ads.append(ad_entry)

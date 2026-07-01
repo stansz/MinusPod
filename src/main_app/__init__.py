@@ -411,7 +411,7 @@ def _try_become_background_leader() -> bool:
         # Keep file handle open (lock released when process exits)
         _try_become_background_leader._lock_file = lock_file
         return True
-    except (IOError, OSError):
+    except OSError:
         return False
 
 
@@ -640,8 +640,6 @@ def _startup():
     UI hint) fire ONLY on the leader to keep the boot log surface a
     single copy instead of N copies. Followers emit one DEBUG line.
     """
-    from main_app.feeds import get_feed_map, refresh_rss_feed
-    from main_app.background import background_rss_refresh, background_queue_processor, reset_stuck_processing_episodes
 
     is_leader = _try_become_background_leader()
 

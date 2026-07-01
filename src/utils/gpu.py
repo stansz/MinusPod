@@ -27,7 +27,7 @@ def get_available_system_memory_gb() -> Optional[float]:
                     kb = int(line.split()[1])
                     gb = kb / (1024 * 1024)
                     return gb
-    except (FileNotFoundError, IOError, ValueError):
+    except (OSError, FileNotFoundError, ValueError):
         pass
 
     # Fall back to psutil if available
@@ -52,14 +52,13 @@ def get_available_gpu_memory_gb() -> Optional[float]:
     try:
         import torch
         if torch.cuda.is_available():
-            # Get total and allocated memory
+            # Get total and reserved memory
             device = torch.cuda.current_device()
             total = torch.cuda.get_device_properties(device).total_memory
-            allocated = torch.cuda.memory_allocated(device)
             cached = torch.cuda.memory_reserved(device)
 
-            # Available = total - max(allocated, cached)
-            # Use cached as it represents actually reserved memory
+            # Available = total - reserved; reserved covers allocated memory
+            # plus PyTorch's caching-allocator headroom.
             available = total - cached
             return available / (1024 ** 3)
     except ImportError:

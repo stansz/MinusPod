@@ -1,7 +1,6 @@
 """Opt-in LLM ad reviewer."""
 import logging
 import math
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -525,7 +524,7 @@ class AdReviewer:
         # Empty array carries the rejection signal in both pools: the LLM
         # decided this segment is not (or no longer) an ad to cut.
         if not ads_returned:
-            verdict = "reject" if pool == "accepted" else "reject"
+            verdict = "reject"
             return (
                 ReviewVerdict(
                     pool=pool, pass_num=pass_num, verdict=verdict,

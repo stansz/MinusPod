@@ -228,9 +228,24 @@ def add_feed():
     if existing:
         return error_response(f'Feed with slug "{slug}" already exists', 409)
 
+    # Validate optional fields before creating the row so a bad value cannot
+    # leave an orphaned, unrefreshed feed that then blocks retry with 409.
+    max_ep = data.get('maxEpisodes')
+    if max_ep is not None:
+        try:
+            max_ep = max(10, min(int(max_ep), 500))
+        except (ValueError, TypeError):
+            return error_response('maxEpisodes must be an integer', 400)
+
+    lang_val = None
+    if 'languageOverride' in data:
+        lang_val, lang_err = _normalize_language_override(data['languageOverride'])
+        if lang_err:
+            return error_response(lang_err, 400)
+
     # Create podcast
     try:
-        podcast_id = db.create_podcast(slug, source_url)
+        db.create_podcast(slug, source_url)
         logger.info(f"Created new feed: {slug} -> {source_url}")
 
         # Apply auto-process override if provided (before initial refresh)
@@ -239,19 +254,13 @@ def add_feed():
         if db_value is not None:
             db.update_podcast(slug, auto_process_override=db_value)
 
-        # Apply max_episodes if provided
-        max_ep = data.get('maxEpisodes')
+        # Apply max_episodes if provided (validated above)
         if max_ep is not None:
-            max_ep = max(10, min(int(max_ep), 500))
             db.update_podcast(slug, max_episodes=max_ep)
 
-        # Apply language override if provided at creation time
-        if 'languageOverride' in data:
-            lang_val, lang_err = _normalize_language_override(data['languageOverride'])
-            if lang_err:
-                return error_response(lang_err, 400)
-            if lang_val is not None:
-                db.update_podcast(slug, language_override=lang_val)
+        # Apply language override if provided (validated above)
+        if lang_val is not None:
+            db.update_podcast(slug, language_override=lang_val)
 
         if 'onlyExposeProcessedEpisodes' in data:
             db.update_podcast(
@@ -280,7 +289,7 @@ def add_feed():
             'message': 'Feed added successfully'
         }, 201)
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to add feed")
         return error_response('Failed to add feed', 500)
 
@@ -618,7 +627,7 @@ def update_feed(slug):
             'onlyExposeProcessedEpisodes': _deserialize_nullable_bool(podcast.get('only_expose_processed_episodes')),
             'feedUrl': f"{base_url}/{slug}"
         })
-    except Exception as e:
+    except Exception:
         logger.exception(f"Failed to update feed {slug}")
         return error_response('Failed to update feed', 500)
 
@@ -648,7 +657,7 @@ def delete_feed(slug):
         logger.info(f"Deleted feed: {slug}")
         return json_response({'message': 'Feed deleted', 'slug': slug})
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Failed to delete feed {slug}")
         return error_response('Failed to delete feed', 500)
 
@@ -698,7 +707,7 @@ def refresh_feed(slug):
             'lastRefreshed': podcast.get('last_checked_at')
         })
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Failed to refresh feed {slug}")
         return error_response('Failed to refresh feed', 500)
 
@@ -731,7 +740,7 @@ def refresh_all_feeds():
             'feedCount': len(podcasts)
         })
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to refresh all feeds")
         return error_response('Failed to refresh feeds', 500)
 

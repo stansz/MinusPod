@@ -6,7 +6,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.30.0] - 2026-07-01
+
+A codebase-wide audit. Alongside the #449 fix it corrects a set of latent bugs
+found by review, removes dead code, and adds the repo's first Python lint gate.
+
+### Fixed
+
+- The "Save" button in the ad editor now closes the editor on the last detected ad (#449). Saving the last ad previously looked like it did nothing: the correction was recorded, but the editor did not advance or close and showed no confirmation, so the change was easy to miss. It now closes the way "Skip" does at the end of the list, and the saved edit shows up in the marker list.
+- Prevented a migration data-loss path: the one-time episodes-table rebuild used when tightening a status CHECK constraint recreated the table without the `original_file`, `processed_version`, `episode_number`, and `tags` columns, so an upgrade that hit the rebuild dropped their data. All four are now carried through the rebuild.
+- Adding a feed with an invalid `maxEpisodes` or language override no longer leaves a half-created feed. Those values are validated before the podcast row is created, so a bad value returns 400 without persisting anything (and a retry no longer hits "already exists").
+- Pattern deduplication now deletes the audio fingerprints of the removed duplicates instead of orphaning them; an orphaned fingerprint could still drive audio cuts against a pattern that no longer existed.
+- Fixed a connection leak in the RSS fetcher and a file-descriptor leak in the queue's orphan-lock probe, both on specific error paths.
+- Episode and search listings clamp a negative `limit` instead of letting it slip past the row cap.
+- Saving ad-detection settings with a null API key clears the key instead of returning 500, and resetting those settings now also resets `whisper_language`.
+- Short pattern templates that fall outside every TF-IDF window bucket are matched again instead of being silently skipped.
+- 401/403/404 provider responses are no longer treated as retryable fallback candidates (retrying cannot fix them).
+- Frontend: the login redirect no longer runs during render; ad timestamps no longer render `:60.0` when fractional seconds round up; the "show original transcript" preference no longer shares a `localStorage` key with a collapsible section; and per-row save feedback in the rejected-marker list no longer lights up unrelated rows.
+
+### Changed
+
+- Added a `ruff` lint job to CI, the repo's first automated Python lint gate, and cleaned up everything it flagged: unused imports, dead local variables, and empty f-strings across the backend and tests.
+- The TF-IDF, fuzzy, and audio-fingerprint match thresholds now come from a single definition in `config.py`. The per-module copies that duplicated those values were removed so the two cannot drift apart.
+- Consolidated the duplicated frontend clock and date formatters into `frontend/src/utils/format.ts`, and the list-page pagination controls into a shared `Pagination` component (Patterns, Sponsors, History).
+- The status broadcaster logs a failing subscriber once at warning and then at debug, instead of silently swallowing the error or warning on every update.
+- Performance: the text matcher reuses TF-IDF vectors built at load instead of re-vectorizing short templates per episode; feed rendering parses the upstream XML once instead of three times; re-detect no longer fetches the same podcast row twice.
+- Robustness: non-security MD5 hashing is marked `usedforsecurity=False`, exception chaining was added to several raises, and the OpenAI error-classification path no longer crashes if a future SDK drops an error class.
+- The detection-stage labels in the UI now cover all backend stages, and post-roll detection honors full-reprocess mode symmetrically with pre-roll.
+
+### Removed
+
+- Removed roughly 40 unused functions, methods, and classes across the backend and frontend: dead database helpers, transcriber and transcript methods, sponsor-service helpers, several unused API-client wrappers, and an ad-editor prop that was accepted but never read. No behavior change.
+- Removed the `CleanupService` module, an unwired scheduled-backup and retention path that was never instantiated in production. Episode retention runs through `background.py`, and manual database backups via the API are unchanged.
 
 ### Documentation
 
@@ -15,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented the cover-art badge and its `POST /api/v1/feeds/refresh-artwork` endpoint, chapter generation, and the Recut Audio reprocess mode.
 - Corrected the reprocess-mode list (four modes from the episode menu, three in bulk), noted that the detection window size and overlap are configurable, and replaced the stale `2.8.13` version examples.
 - Fixed API reference inaccuracies: the mode-aware reprocess endpoint is `/api/v1/episodes/{slug}/{id}/reprocess` (the `/feeds/...` path ignores `mode` and always runs a full reprocess), the cue-template create body takes `cueType` (not `label`), and the cue capture range is 0.2 to 10 seconds (up to 60 for a show intro or outro).
-- Added the `GET /api/v1/tags/vocabulary` path to `openapi.yaml`; the spec version stays `2.29.1` (docs-only change).
+- Added the `GET /api/v1/tags/vocabulary` path to `openapi.yaml`.
 - Refreshed every UI screenshot (desktop and mobile, dark theme) and added audio-cue and badged-cover-art images.
 
 ## [2.29.1] - 2026-06-29

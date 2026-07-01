@@ -11,9 +11,11 @@ import {
 import PatternDetailModal from '../components/PatternDetailModal';
 import PatternMergeSuggestions from '../components/PatternMergeSuggestions';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { Pagination } from '../components/Pagination';
 import { CommunityBadge } from '../components/CommunityBadge';
 import { PatternImportDialog } from '../components/PatternImportDialog';
 import { PatternExportDialog } from '../components/PatternExportDialog';
+import { formatDate } from '../utils/format';
 
 type ScopeFilter = 'all' | 'global' | 'network' | 'podcast';
 type OriginFilter = 'all' | 'auto' | 'user';
@@ -173,11 +175,6 @@ function PatternsPage() {
   const totalPages = Math.ceil((sortedPatterns?.length || 0) / limit);
   const paginatedPatterns = sortedPatterns?.slice((page - 1) * limit, page * limit);
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString();
-  };
-
   const getScopeBadge = (pattern: AdPattern) => {
     if (pattern.scope === 'global') {
       return <span className="px-2 py-0.5 text-xs rounded bg-blue-500/20 text-blue-600 dark:text-blue-400">Global</span>;
@@ -206,23 +203,6 @@ function PatternsPage() {
         Inactive
       </span>
     );
-  };
-
-  // Generate page numbers with ellipsis for large page counts
-  const getPageNumbers = (current: number, total: number): (number | 'ellipsis')[] => {
-    const pages: (number | 'ellipsis')[] = [];
-    if (total <= 7) {
-      for (let i = 1; i <= total; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (current > 3) pages.push('ellipsis');
-      for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) {
-        pages.push(i);
-      }
-      if (current < total - 2) pages.push('ellipsis');
-      pages.push(total);
-    }
-    return pages;
   };
 
   if (isLoading) {
@@ -596,46 +576,7 @@ function PatternsPage() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 mt-4 bg-card rounded-lg border border-border">
-          <div className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} ({sortedPatterns?.length || 0} total)
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-center">
-            <button
-              onClick={() => setPage(Math.max(1, page - 1))}
-              disabled={page === 1}
-              className="px-3 py-1.5 text-sm rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 transition-colors"
-            >
-              Previous
-            </button>
-            {getPageNumbers(page, totalPages).map((p, i) =>
-              p === 'ellipsis' ? (
-                <span key={`e${i}`} className="px-2 text-muted-foreground">...</span>
-              ) : (
-                <button
-                  key={p}
-                  onClick={() => setPage(p)}
-                  className={`px-3 py-1.5 text-sm rounded transition-colors ${
-                    p === page
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                  }`}
-                >
-                  {p}
-                </button>
-              )
-            )}
-            <button
-              onClick={() => setPage(Math.min(totalPages, page + 1))}
-              disabled={page === totalPages}
-              className="px-3 py-1.5 text-sm rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 transition-colors"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} total={sortedPatterns?.length || 0} onPage={setPage} />
 
       {/* Detail Modal */}
       {selectedPattern && (
