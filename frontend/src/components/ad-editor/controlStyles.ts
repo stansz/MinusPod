@@ -16,3 +16,13 @@ export const primaryBtn =
   'disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const ctrlBtn = `px-2 py-1.5 rounded ${ghostBtn} text-sm`;
+
+// Amber-accented icon button for "play selection", tied visually to the amber
+// selection region and the "IN SELECTION" badge so users spot it in the
+// primary transport cluster.
+export const selectionBtn =
+  'inline-flex items-center gap-0.5 px-1.5 py-1.5 rounded ' +
+  'border border-amber-500/60 text-amber-500 bg-amber-500/10 transition-colors ' +
+  'hover:bg-amber-500/20 hover:border-amber-500 ' +
+  'focus:outline-hidden focus:ring-2 focus:ring-amber-500 ' +
+  'disabled:opacity-40 disabled:cursor-not-allowed';

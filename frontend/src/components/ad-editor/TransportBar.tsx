@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Rewind, FastForward, Square } from 'lucide-react';
 import { formatTime } from '../../utils/adReviewHelpers';
-import { PLAYBACK_RATES, ghostBtn, primaryBtn, ctrlBtn } from './controlStyles';
+import { PLAYBACK_RATES, ghostBtn, primaryBtn, selectionBtn } from './controlStyles';
 
 // Shared playback transport bar for the audio-editor modals (AdReviewModal and
 // CueMarkModal). Purely presentational: the host owns the <audio> element, the
@@ -57,6 +57,19 @@ function TransportBar({
         <button type="button" onClick={onTogglePlay} className={`p-1.5 rounded-full ${primaryBtn}`} title="Play / pause (Space)">
           {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
         </button>
+        {onPlaySelection && (
+          <button
+            type="button"
+            onClick={onPlaySelection}
+            className={`ml-0.5 ${selectionBtn}`}
+            title="Play the bracketed selection only"
+            aria-label="Play selection"
+          >
+            <span aria-hidden="true" className="text-xs font-bold leading-none">[</span>
+            <Play className="w-4 h-4" />
+            <span aria-hidden="true" className="text-xs font-bold leading-none">]</span>
+          </button>
+        )}
         <button type="button" onClick={() => onSeekRelative(10)} className={`p-1.5 rounded ${ghostBtn}`} title="Forward 10s">
           <FastForward className="w-4 h-4" />
         </button>
@@ -88,14 +101,8 @@ function TransportBar({
           </svg>
         </label>
       </div>
-      {/* Secondary row: Play-selection (left) and the selection readout incl.
-          duration (right, pushed over with ml-auto) share one line. */}
+      {/* Secondary row: selection readout (right, pushed over with ml-auto). */}
       <div className="mt-2 flex items-center gap-2 flex-wrap">
-        {onPlaySelection && (
-          <button type="button" onClick={onPlaySelection} className={ctrlBtn} title="Play the bracketed selection only">
-            Play selection
-          </button>
-        )}
         <div className="ml-auto flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
           <span className="text-foreground">{formatTime(currentTime)}</span>
           <span>/</span>
