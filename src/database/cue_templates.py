@@ -206,29 +206,33 @@ class CueTemplateMixin:
         return cursor.rowcount > 0
 
     # ------------------------------------------------------------------
-    # Cached recurring-sound scan (the on-demand "find cue candidates" run).
-    # The scan is slow (full decode), so it runs in a background thread and the
-    # API polls this row instead of holding the request open past the proxy
-    # timeout.
+    # Cached background scans. A slow full-decode scan runs in a background
+    # thread and the API polls a per-(podcast, episode) row instead of holding
+    # the request open past the proxy timeout. Two scan families use the same
+    # claim/poll/save state machine over identically-shaped tables, differing
+    # only by table name and payload column, so the machine lives in one place.
+    # Table and column names are internal constants (never user input), so they
+    # are safe to interpolate into the SQL.
 
-    def get_cue_candidate_scan(self, podcast_id: int, episode_id: str) -> Optional[Dict]:
+    def _get_scan(self, table: str, payload_col: str,
+                  podcast_id: int, episode_id: str) -> Optional[Dict]:
         """Return the cached scan row for a feed/episode, or None."""
         conn = self.get_connection()
         row = conn.execute(
-            "SELECT status, candidates_json, error, updated_at FROM cue_candidate_scans "
+            f"SELECT status, {payload_col}, error, updated_at FROM {table} "
             "WHERE podcast_id = ? AND episode_id = ?",
             (podcast_id, episode_id),
         ).fetchone()
         return dict(row) if row else None
 
-    def claim_cue_candidate_scan(
-        self, podcast_id: int, episode_id: str, stale_seconds: float,
-        force: bool = False,
+    def _claim_scan(
+        self, table: str, payload_col: str, podcast_id: int, episode_id: str,
+        stale_seconds: float, force: bool = False,
     ) -> str:
         """Decide whether the caller should run the scan now.
 
         Returns one of:
-          'ready'    -- a cached result exists; read it with get_cue_candidate_scan
+          'ready'    -- a cached result exists; read it with the get wrapper
           'scanning' -- a fresh scan is already running; poll again shortly
           'error'    -- the last scan failed and is still fresh; show the error
           'started'  -- the caller claimed the slot and must run the scan
@@ -248,15 +252,15 @@ class CueTemplateMixin:
             .strftime('%Y-%m-%dT%H:%M:%SZ')
         before = conn.total_changes
         conn.execute(
-            """INSERT INTO cue_candidate_scans
-                   (podcast_id, episode_id, status, candidates_json, error, updated_at)
+            f"""INSERT INTO {table}
+                   (podcast_id, episode_id, status, {payload_col}, error, updated_at)
                VALUES (:pid, :eid, 'scanning', NULL, NULL, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
                ON CONFLICT(podcast_id, episode_id) DO UPDATE SET
-                   status='scanning', candidates_json=NULL, error=NULL,
+                   status='scanning', {payload_col}=NULL, error=NULL,
                    updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-               WHERE (cue_candidate_scans.status = 'scanning' AND cue_candidate_scans.updated_at <= :cutoff)
-                  OR (cue_candidate_scans.status = 'error' AND (:force OR cue_candidate_scans.updated_at <= :cutoff))
-                  OR (cue_candidate_scans.status = 'ready' AND :force)""",
+               WHERE ({table}.status = 'scanning' AND {table}.updated_at <= :cutoff)
+                  OR ({table}.status = 'error' AND (:force OR {table}.updated_at <= :cutoff))
+                  OR ({table}.status = 'ready' AND :force)""",
             {'pid': podcast_id, 'eid': episode_id, 'cutoff': cutoff, 'force': 1 if force else 0},
         )
         conn.commit()
@@ -264,105 +268,82 @@ class CueTemplateMixin:
             return 'started'
         # Did not claim: report the live state of the row that blocked us.
         row = conn.execute(
-            "SELECT status FROM cue_candidate_scans WHERE podcast_id = ? AND episode_id = ?",
+            f"SELECT status FROM {table} WHERE podcast_id = ? AND episode_id = ?",
             (podcast_id, episode_id),
         ).fetchone()
         return row['status'] if row else 'scanning'
 
-    def save_cue_candidate_scan_result(
-        self, podcast_id: int, episode_id: str, candidates: List[Dict],
+    def _save_scan_result(
+        self, table: str, payload_col: str, podcast_id: int, episode_id: str,
+        payload,
     ) -> None:
-        """Persist a completed scan's candidates and mark it ready."""
+        """Persist a completed scan's payload and mark it ready."""
         conn = self.get_connection()
         conn.execute(
-            """UPDATE cue_candidate_scans SET status='ready', candidates_json=?, error=NULL,
+            f"""UPDATE {table} SET status='ready', {payload_col}=?, error=NULL,
                    updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                WHERE podcast_id=? AND episode_id=?""",
-            (json.dumps(candidates), podcast_id, episode_id),
+            (json.dumps(payload), podcast_id, episode_id),
         )
         conn.commit()
 
-    def save_cue_candidate_scan_error(
-        self, podcast_id: int, episode_id: str, error: str,
+    def _save_scan_error(
+        self, table: str, podcast_id: int, episode_id: str, error: str,
     ) -> None:
         """Mark a scan as failed with a short error message."""
         conn = self.get_connection()
         conn.execute(
-            """UPDATE cue_candidate_scans SET status='error', error=?,
+            f"""UPDATE {table} SET status='error', error=?,
                    updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                WHERE podcast_id=? AND episode_id=?""",
             (str(error)[:500], podcast_id, episode_id),
         )
         conn.commit()
 
-    # ------------------------------------------------------------------
-    # Cached threshold-suggest scan (#350 follow-up). Same claim/poll/save
-    # pattern as cue_candidate_scans; stores a suggestion dict (result_json)
-    # instead of a candidates list.
+    # Cached recurring-sound scan (the on-demand "find cue candidates" run).
+
+    def get_cue_candidate_scan(self, podcast_id: int, episode_id: str) -> Optional[Dict]:
+        return self._get_scan('cue_candidate_scans', 'candidates_json', podcast_id, episode_id)
+
+    def claim_cue_candidate_scan(
+        self, podcast_id: int, episode_id: str, stale_seconds: float,
+        force: bool = False,
+    ) -> str:
+        return self._claim_scan(
+            'cue_candidate_scans', 'candidates_json', podcast_id, episode_id,
+            stale_seconds, force)
+
+    def save_cue_candidate_scan_result(
+        self, podcast_id: int, episode_id: str, candidates: List[Dict],
+    ) -> None:
+        self._save_scan_result(
+            'cue_candidate_scans', 'candidates_json', podcast_id, episode_id, candidates)
+
+    def save_cue_candidate_scan_error(
+        self, podcast_id: int, episode_id: str, error: str,
+    ) -> None:
+        self._save_scan_error('cue_candidate_scans', podcast_id, episode_id, error)
+
+    # Cached threshold-suggest scan (#350 follow-up); stores a suggestion dict.
 
     def get_cue_threshold_scan(self, podcast_id: int, episode_id: str) -> Optional[Dict]:
-        """Return the cached threshold-suggest scan row, or None."""
-        conn = self.get_connection()
-        row = conn.execute(
-            "SELECT status, result_json, error, updated_at FROM cue_threshold_scans "
-            "WHERE podcast_id = ? AND episode_id = ?",
-            (podcast_id, episode_id),
-        ).fetchone()
-        return dict(row) if row else None
+        return self._get_scan('cue_threshold_scans', 'result_json', podcast_id, episode_id)
 
     def claim_cue_threshold_scan(
         self, podcast_id: int, episode_id: str, stale_seconds: float,
         force: bool = False,
     ) -> str:
-        """Claim the threshold-suggest slot. Returns 'started'|'scanning'|'ready'|'error'.
-        Same single-UPSERT concurrency guard as claim_cue_candidate_scan."""
-        conn = self.get_connection()
-        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=stale_seconds)) \
-            .strftime('%Y-%m-%dT%H:%M:%SZ')
-        before = conn.total_changes
-        conn.execute(
-            """INSERT INTO cue_threshold_scans
-                   (podcast_id, episode_id, status, result_json, error, updated_at)
-               VALUES (:pid, :eid, 'scanning', NULL, NULL, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-               ON CONFLICT(podcast_id, episode_id) DO UPDATE SET
-                   status='scanning', result_json=NULL, error=NULL,
-                   updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-               WHERE (cue_threshold_scans.status = 'scanning' AND cue_threshold_scans.updated_at <= :cutoff)
-                  OR (cue_threshold_scans.status = 'error' AND (:force OR cue_threshold_scans.updated_at <= :cutoff))
-                  OR (cue_threshold_scans.status = 'ready' AND :force)""",
-            {'pid': podcast_id, 'eid': episode_id, 'cutoff': cutoff, 'force': 1 if force else 0},
-        )
-        conn.commit()
-        if conn.total_changes > before:
-            return 'started'
-        row = conn.execute(
-            "SELECT status FROM cue_threshold_scans WHERE podcast_id = ? AND episode_id = ?",
-            (podcast_id, episode_id),
-        ).fetchone()
-        return row['status'] if row else 'scanning'
+        return self._claim_scan(
+            'cue_threshold_scans', 'result_json', podcast_id, episode_id,
+            stale_seconds, force)
 
     def save_cue_threshold_scan_result(
         self, podcast_id: int, episode_id: str, result: Dict,
     ) -> None:
-        """Persist a completed threshold-suggest result and mark it ready."""
-        conn = self.get_connection()
-        conn.execute(
-            """UPDATE cue_threshold_scans SET status='ready', result_json=?, error=NULL,
-                   updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-               WHERE podcast_id=? AND episode_id=?""",
-            (json.dumps(result), podcast_id, episode_id),
-        )
-        conn.commit()
+        self._save_scan_result(
+            'cue_threshold_scans', 'result_json', podcast_id, episode_id, result)
 
     def save_cue_threshold_scan_error(
         self, podcast_id: int, episode_id: str, error: str,
     ) -> None:
-        """Mark a threshold-suggest scan as failed."""
-        conn = self.get_connection()
-        conn.execute(
-            """UPDATE cue_threshold_scans SET status='error', error=?,
-                   updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-               WHERE podcast_id=? AND episode_id=?""",
-            (str(error)[:500], podcast_id, episode_id),
-        )
-        conn.commit()
+        self._save_scan_error('cue_threshold_scans', podcast_id, episode_id, error)

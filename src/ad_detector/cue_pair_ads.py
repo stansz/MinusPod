@@ -126,7 +126,9 @@ def _orient_cues(cues, ads, window_s):
         return
     ad_starts = sorted(float(a['start']) for a in ads if _ad_edges_ok(a))
     ad_ends = sorted(float(a['end']) for a in ads if _ad_edges_ok(a))
-    if not ad_starts and not ad_ends:
+    # Both lists come from the same _ad_edges_ok filter, so they are empty
+    # together; checking one is enough.
+    if not ad_starts:
         return
     # Edge-eligible cues only: non_ad (intro/outro/content_transition) cues never
     # open or close and must not pollute the first-after / last-before adjacency.

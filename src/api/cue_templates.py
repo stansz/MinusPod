@@ -1007,19 +1007,21 @@ def _run_cue_threshold_scan(podcast_id, episode_id, slug, audio_paths,
     try:
         scores = []
         peaks = {}
+        # The matcher is stateless across episodes (audio is decoded inside
+        # detect_with_debug), so build it once instead of per episode.
+        matcher = AudioCueTemplateMatcher(
+            templates,
+            score_threshold=AUDIO_CUE_SUGGEST_FLOOR,
+            max_matches_per_template=200,
+            formant_atten_db=formant_atten,
+        )
         for path in audio_paths:
-            matcher = AudioCueTemplateMatcher(
-                templates,
-                score_threshold=AUDIO_CUE_SUGGEST_FLOOR,
-                max_matches_per_template=200,
-                formant_atten_db=formant_atten,
-            )
             signals, debug = matcher.detect_with_debug(path)
             for s in signals:
                 scores.append((s.details or {}).get('score', s.confidence))
             for t in debug.get('templates', []):
                 peaks[t['id']] = max(peaks.get(t['id'], 0.0), t.get('peak_score', 0.0))
-        suggestion = suggest_cue_threshold(scores, peaks, effect_floor=effect_floor)
+        suggestion = suggest_cue_threshold(scores, effect_floor=effect_floor)
         db.save_cue_threshold_scan_result(podcast_id, episode_id, {
             'suggestion': suggestion,
             'sampleEpisodes': len(audio_paths),
@@ -1055,9 +1057,9 @@ def cue_threshold_suggest(slug):
         row = db.get_cue_threshold_scan(podcast_id, episode_id)
         result = json.loads((row or {}).get('result_json') or '{}')
         return json_response({'episodeId': episode_id, 'status': 'ready', **result})
-    if state == 'scanning':
+    elif state == 'scanning':
         return json_response({'episodeId': episode_id, 'status': 'scanning'})
-    if state == 'error':
+    elif state == 'error':
         row = db.get_cue_threshold_scan(podcast_id, episode_id)
         return json_response({'episodeId': episode_id, 'status': 'error',
                               'error': (row or {}).get('error') or 'threshold scan failed'})

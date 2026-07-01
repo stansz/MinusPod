@@ -681,17 +681,15 @@ function CueScanModal({ slug, onClose }: CueScanModalProps) {
     setSuggesting(true);
     setSuggestion(null);
     try {
-      let settled = false;
       for (let i = 0; i < 60; i++) {
         const res = await suggestCueThreshold(slug, selectedEpisode.id);
         if (res.status === 'ready' || res.status === 'error') {
-          settled = true;
           setSuggestion(res);
-          break;
+          return;
         }
         await new Promise((r) => setTimeout(r, 1000));
       }
-      if (!settled) setError('Threshold suggest timed out after 60 seconds');
+      setError('Threshold suggest timed out after 60 seconds');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Suggest failed');
     } finally {
@@ -804,7 +802,6 @@ function CueScanModal({ slug, onClose }: CueScanModalProps) {
         {suggestion?.suggestion && (() => {
           const s = suggestion.suggestion;
           const canApply = s.confidence !== 'low'
-            && s.suggested != null
             && s.effectFloorWarning !== 'signal-below-floor';
           return (
             <div className="mb-3 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-sm">

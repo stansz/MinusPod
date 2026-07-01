@@ -7,7 +7,7 @@ no IO, unit-testable in isolation.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from config import (
     AUDIO_CUE_SUGGEST_MIN_GAP,
@@ -20,7 +20,6 @@ from config import (
 
 def suggest_cue_threshold(
     occurrence_scores: List[float],
-    per_template_peaks: Optional[Dict[int, float]] = None,
     effect_floor: float = AUDIO_CUE_EFFECT_FLOOR,
 ) -> Dict:
     """Propose a global match threshold from a list of per-occurrence scores.
