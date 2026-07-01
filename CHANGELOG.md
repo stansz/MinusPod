@@ -6,6 +6,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.31.0] - 2026-07-01
+
+### Added
+
+- The cue editor's "Play selection" control is now a bracketed play icon in the
+  main transport row, so it is easy to find. It plays only the bracketed
+  selection (#350).
+- Saved cues on a feed's Audio Cue Templates list now have a Play button so you
+  can hear each one without exporting it. One cue plays at a time.
+- New "Suggest threshold" tool on a feed's cue test panel: it sweeps a sample
+  of episodes and proposes a global cue match threshold from the gap between
+  noise and real matches. The tool notes that a cue below 0.80 confidence will
+  not change cuts. The default match threshold stays 0.75 (#350).
+
+### Changed
+
+- Content-transition cues are now described to the ad reviewer as a
+  maybe-boundary transition instead of being grouped with the show's intro or
+  outro, so a jingle reused around ad breaks is no longer treated as
+  never-a-boundary (#350).
+- Cue-pair ad synthesis no longer invents an ad over show content on feeds
+  whose single cue brackets both ends of a break with an unbracketed opening
+  ad. Each cue is now oriented from the first-pass ad edges and paired on the
+  right phase (#350).
+
+### API
+
+- `GET /api/v1/cue-templates/{templateId}/audio` -- streams the template's raw
+  audio as `audio/wav` (404 unknown, 422 no audio stored).
+- `POST /api/v1/feeds/{slug}/cue-threshold-suggest` -- runs a threshold sweep
+  and returns `{episodeId, status, suggestion?, sampleEpisodes?, floorUsed?,
+  perTemplate?, error?}`.
+
 ## [2.30.0] - 2026-07-01
 
 A codebase-wide audit. Alongside the #449 fix it corrects a set of latent bugs

@@ -12,7 +12,7 @@ info:
     - Monitor system status and trigger cleanup operations
     - Manage cross-episode ad patterns with network and podcast scope
     - Submit corrections to improve ad detection accuracy
-  version: 2.30.0
+  version: 2.31.0
   contact:
     name: MinusPod
   license:
@@ -4895,6 +4895,30 @@ paths:
         '422':
           description: Template has no raw audio to export
 
+  /cue-templates/{templateId}/audio:
+    get:
+      tags: [AudioCueTemplates]
+      summary: Stream raw audio for a cue template (inline WAV)
+      operationId: getCueTemplateAudio
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Inline WAV audio for the template
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Template not found
+        '422':
+          description: Template has no raw audio stored
+
   /feeds/{slug}/cue-templates/import:
     post:
       tags: [AudioCueTemplates]
@@ -5309,6 +5333,76 @@ paths:
                 $ref: '#/components/schemas/CueAdvisory'
         '404':
           description: Feed not found
+
+  /feeds/{slug}/cue-threshold-suggest:
+    post:
+      tags: [AudioCueTemplates]
+      summary: Suggest a global cue match threshold for a feed
+      description: >
+        Sweeps a sample of episodes for one or more templates and proposes a
+        global cue match threshold based on the gap between noise and real
+        matches. The suggestion is advisory; a cue below 0.80 confidence will
+        not change cuts regardless of this value.
+      operationId: suggestCueThreshold
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [episodeId]
+              properties:
+                episodeId:
+                  type: integer
+                  description: Anchor episode to include in the sweep.
+                rescan:
+                  type: boolean
+                  description: Force a fresh cue scan even if results are cached.
+      responses:
+        '200':
+          description: Threshold suggestion result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [episodeId, status]
+                properties:
+                  episodeId:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [scanning, ready, error]
+                    description: scanning while results are being gathered, ready when a suggestion is available, error on failure.
+                  suggestion:
+                    type: number
+                    description: Proposed threshold (0-1). Present when status is ready.
+                  sampleEpisodes:
+                    type: integer
+                    description: Number of episodes included in the sweep.
+                  floorUsed:
+                    type: number
+                    description: Noise-floor value the suggestion was derived from.
+                  perTemplate:
+                    type: array
+                    description: Per-template breakdown. Present when status is ready.
+                    items:
+                      type: object
+                      properties:
+                        templateId:
+                          type: integer
+                        suggestion:
+                          type: number
+                  error:
+                    type: string
+                    description: Error message. Present when status is error.
+        '404':
+          description: Feed or episode not found
 
   /cue-detections/aggregate:
     get:
