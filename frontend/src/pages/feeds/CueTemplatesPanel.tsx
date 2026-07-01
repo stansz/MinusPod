@@ -13,15 +13,17 @@ import {
   listCueTemplates,
   previewCueTemplate,
   scanEpisodeCues,
+  suggestCueThreshold,
   updateCueTemplate,
   type CueScanResponse,
   type CueTemplate,
   type CueTemplateScope,
   type CueTemplateType,
+  type ThresholdSuggestResponse,
 } from '../../api/cueTemplates';
 import { getCueFeedAdvisory } from '../../api/cueDetections';
 import { getEpisode, getEpisodes, getFeed, getFeeds } from '../../api/feeds';
-import { getSettings } from '../../api/settings';
+import { getSettings, updateSettings } from '../../api/settings';
 import type { Feed } from '../../api/types';
 import type { Episode } from '../../api/types';
 import { formatTime } from '../../utils/adReviewHelpers';
@@ -657,6 +659,8 @@ function CueScanModal({ slug, onClose }: CueScanModalProps) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CueScanResponse | null>(null);
+  const [suggestion, setSuggestion] = useState<ThresholdSuggestResponse | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
 
   const runScan = async (ep: Episode, override?: number) => {
     setRunning(true);
@@ -669,6 +673,40 @@ function CueScanModal({ slug, onClose }: CueScanModalProps) {
       setError(e instanceof Error ? e.message : 'Scan failed');
     } finally {
       setRunning(false);
+    }
+  };
+
+  const runSuggest = async () => {
+    if (!selectedEpisode) return;
+    setSuggesting(true);
+    setSuggestion(null);
+    try {
+      let settled = false;
+      for (let i = 0; i < 60; i++) {
+        const res = await suggestCueThreshold(slug, selectedEpisode.id);
+        if (res.status === 'ready' || res.status === 'error') {
+          settled = true;
+          setSuggestion(res);
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (!settled) setError('Threshold suggest timed out after 60 seconds');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Suggest failed');
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  const applySuggested = async (value: number) => {
+    if (!window.confirm(
+      `Set the global cue match threshold to ${value.toFixed(2)}? This affects every feed with cue templates.`,
+    )) return;
+    try {
+      await updateSettings({ audioCueTemplateScore: value });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not apply');
     }
   };
 
@@ -746,14 +784,59 @@ function CueScanModal({ slug, onClose }: CueScanModalProps) {
           <button
             type="button"
             className={`px-3 py-1.5 rounded ${ghostBtn} text-sm`}
-            onClick={() => { setPicking(true); setResult(null); setSelectedEpisode(null); }}
+            onClick={() => { setPicking(true); setResult(null); setSelectedEpisode(null); setSuggestion(null); }}
           >
             Pick different episode
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1.5 rounded ${ghostBtn} text-sm`}
+            onClick={runSuggest}
+            disabled={suggesting}
+          >
+            {suggesting ? 'Suggesting...' : 'Suggest threshold'}
           </button>
         </div>
 
         {error && <p className="text-sm text-destructive mb-3">{error}</p>}
         {running && <LoadingSpinner size="sm" className="my-3" />}
+
+        {suggestion?.suggestion && (() => {
+          const s = suggestion.suggestion;
+          const canApply = s.confidence !== 'low'
+            && s.suggested != null
+            && s.effectFloorWarning !== 'signal-below-floor';
+          return (
+            <div className="mb-3 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-sm">
+              {s.suggested != null ? (
+                <p className="font-mono">
+                  noise {s.noiseCeiling?.toFixed(3)} / signal {s.signalFloor?.toFixed(3)}
+                  {' '}(gap {s.gapWidth?.toFixed(3)}) across {suggestion.sampleEpisodes ?? '--'} episode(s)
+                  {' -> suggested '}<span className="font-semibold">{s.suggested.toFixed(2)}</span>
+                </p>
+              ) : (
+                <p className="text-muted-foreground">{s.reason}</p>
+              )}
+              {s.effectFloorWarning === 'signal-below-floor' && (
+                <p className="mt-1 text-amber-600 dark:text-amber-400">
+                  The real cue scores below the {s.effectFloor?.toFixed(2)} floor, so lowering the
+                  match score only surfaces it in diagnostics; it will not change cuts. Re-capture a
+                  cleaner cue or enable voiceover attenuation.
+                </p>
+              )}
+              {s.suggested != null && (
+                <button
+                  type="button"
+                  className={`mt-2 px-3 py-1.5 rounded ${ghostBtn} text-sm disabled:opacity-50`}
+                  onClick={() => applySuggested(s.suggested as number)}
+                  disabled={!canApply}
+                >
+                  Apply as global default
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {result && (
           <div className="space-y-3">

@@ -197,6 +197,38 @@ export async function scanEpisodeCues(
   );
 }
 
+export interface ThresholdSuggestion {
+  confidence: 'high' | 'partial' | 'low';
+  suggested: number | null;
+  reason?: string;
+  noiseCeiling?: number;
+  signalFloor?: number;
+  gapWidth?: number;
+  signalCount?: number;
+  effectFloor?: number;
+  effectFloorWarning?: 'signal-below-floor' | null;
+}
+
+export interface ThresholdSuggestResponse {
+  episodeId: string;
+  status: 'scanning' | 'ready' | 'error';
+  error?: string;
+  suggestion?: ThresholdSuggestion;
+  sampleEpisodes?: number;
+  floorUsed?: number;
+}
+
+export async function suggestCueThreshold(
+  slug: string,
+  episodeId: string,
+  rescan = false,
+): Promise<ThresholdSuggestResponse> {
+  return apiRequest<ThresholdSuggestResponse>(
+    `/feeds/${slug}/cue-threshold-suggest`,
+    { method: 'POST', body: { episodeId, rescan } },
+  );
+}
+
 export type CueCandidateKind = 'recurring' | 'intro' | 'outro';
 
 export interface CueCandidate {
