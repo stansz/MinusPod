@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import wave
 import zipfile
 
@@ -282,6 +283,35 @@ def test_cue_template_audio_404_for_unknown(app_client, seeded):
 
 
 # --- settings validation ---------------------------------------------------
+
+def test_cue_threshold_suggest_starts_and_completes(app_client, seeded):
+    headers = _csrf(app_client)
+    slug = seeded['slug']
+    eid = seeded['episode_id']
+    _seed_template(seeded['db'], slug)  # the route 400s with no templates
+    # First call claims the slot and starts the background sweep.
+    resp = app_client.post(
+        f'/api/v1/feeds/{slug}/cue-threshold-suggest',
+        json={'episodeId': eid}, headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()['status'] in ('scanning', 'ready')
+
+    # Poll until the background thread finishes (bounded).
+    status = None
+    for _ in range(50):
+        r = app_client.post(
+            f'/api/v1/feeds/{slug}/cue-threshold-suggest',
+            json={'episodeId': eid}, headers=headers,
+        )
+        status = r.get_json()['status']
+        if status in ('ready', 'error'):
+            break
+        time.sleep(0.1)
+    assert status == 'ready'
+    body = r.get_json()
+    assert 'suggestion' in body and 'confidence' in body['suggestion']
+
 
 def test_settings_validation_for_new_keys(app_client):
     hdr = _csrf(app_client)

@@ -292,3 +292,75 @@ class CueTemplateMixin:
             (str(error)[:500], podcast_id, episode_id),
         )
         conn.commit()
+
+    # ------------------------------------------------------------------
+    # Cached threshold-suggest scan (#350 follow-up). Same claim/poll/save
+    # pattern as cue_candidate_scans; stores a suggestion dict (result_json)
+    # instead of a candidates list.
+
+    def get_cue_threshold_scan(self, podcast_id: int, episode_id: str) -> Optional[Dict]:
+        """Return the cached threshold-suggest scan row, or None."""
+        conn = self.get_connection()
+        row = conn.execute(
+            "SELECT status, result_json, error, updated_at FROM cue_threshold_scans "
+            "WHERE podcast_id = ? AND episode_id = ?",
+            (podcast_id, episode_id),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def claim_cue_threshold_scan(
+        self, podcast_id: int, episode_id: str, stale_seconds: float,
+        force: bool = False,
+    ) -> str:
+        """Claim the threshold-suggest slot. Returns 'started'|'scanning'|'ready'|'error'.
+        Same single-UPSERT concurrency guard as claim_cue_candidate_scan."""
+        conn = self.get_connection()
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=stale_seconds)) \
+            .strftime('%Y-%m-%dT%H:%M:%SZ')
+        before = conn.total_changes
+        conn.execute(
+            """INSERT INTO cue_threshold_scans
+                   (podcast_id, episode_id, status, result_json, error, updated_at)
+               VALUES (:pid, :eid, 'scanning', NULL, NULL, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+               ON CONFLICT(podcast_id, episode_id) DO UPDATE SET
+                   status='scanning', result_json=NULL, error=NULL,
+                   updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+               WHERE (cue_threshold_scans.status = 'scanning' AND cue_threshold_scans.updated_at <= :cutoff)
+                  OR (cue_threshold_scans.status = 'error' AND (:force OR cue_threshold_scans.updated_at <= :cutoff))
+                  OR (cue_threshold_scans.status = 'ready' AND :force)""",
+            {'pid': podcast_id, 'eid': episode_id, 'cutoff': cutoff, 'force': 1 if force else 0},
+        )
+        conn.commit()
+        if conn.total_changes > before:
+            return 'started'
+        row = conn.execute(
+            "SELECT status FROM cue_threshold_scans WHERE podcast_id = ? AND episode_id = ?",
+            (podcast_id, episode_id),
+        ).fetchone()
+        return row['status'] if row else 'scanning'
+
+    def save_cue_threshold_scan_result(
+        self, podcast_id: int, episode_id: str, result: Dict,
+    ) -> None:
+        """Persist a completed threshold-suggest result and mark it ready."""
+        conn = self.get_connection()
+        conn.execute(
+            """UPDATE cue_threshold_scans SET status='ready', result_json=?, error=NULL,
+                   updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+               WHERE podcast_id=? AND episode_id=?""",
+            (json.dumps(result), podcast_id, episode_id),
+        )
+        conn.commit()
+
+    def save_cue_threshold_scan_error(
+        self, podcast_id: int, episode_id: str, error: str,
+    ) -> None:
+        """Mark a threshold-suggest scan as failed."""
+        conn = self.get_connection()
+        conn.execute(
+            """UPDATE cue_threshold_scans SET status='error', error=?,
+                   updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+               WHERE podcast_id=? AND episode_id=?""",
+            (str(error)[:500], podcast_id, episode_id),
+        )
+        conn.commit()

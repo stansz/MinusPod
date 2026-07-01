@@ -376,6 +376,20 @@ CREATE TABLE IF NOT EXISTS cue_candidate_scans (
     PRIMARY KEY (podcast_id, episode_id),
     FOREIGN KEY (podcast_id) REFERENCES podcasts(id) ON DELETE CASCADE
 );
+
+-- cue_threshold_scans: cached result of the on-demand threshold-suggest sweep.
+-- Mirrors cue_candidate_scans but stores a suggestion dict instead of candidates.
+-- The sweep runs in a background thread; the API polls this row.
+CREATE TABLE IF NOT EXISTS cue_threshold_scans (
+    podcast_id INTEGER NOT NULL,
+    episode_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'scanning' CHECK(status IN ('scanning', 'ready', 'error')),
+    result_json TEXT,
+    error TEXT,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    PRIMARY KEY (podcast_id, episode_id),
+    FOREIGN KEY (podcast_id) REFERENCES podcasts(id) ON DELETE CASCADE
+);
 """
 
 # Indexes that depend on columns added by migrations - created separately
