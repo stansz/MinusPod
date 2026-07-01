@@ -16,6 +16,7 @@ they harden into patterns.
 """
 from __future__ import annotations
 
+import bisect
 import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -25,7 +26,10 @@ from config import (
     AUDIO_CUE_PAIR_MIN_BREAK_SECONDS,
     AUDIO_CUE_PAIR_MAX_BREAK_SECONDS,
     AUDIO_CUE_PAIR_MAX_BREAK_FRACTION,
+    AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS,
     AUDIO_CUE_ROLE_DEFAULT,
+    AUDIO_CUE_ROLE_START,
+    AUDIO_CUE_ROLE_END,
     AUDIO_CUE_START_EDGE_ROLES,
     AUDIO_CUE_END_EDGE_ROLES,
     is_template_cue,
@@ -43,6 +47,7 @@ DEFAULT_MIN_PAIR_CONFIDENCE = AUDIO_CUE_PAIR_CONFIDENCE
 DEFAULT_MIN_BREAK_S = AUDIO_CUE_PAIR_MIN_BREAK_SECONDS
 DEFAULT_MAX_BREAK_S = AUDIO_CUE_PAIR_MAX_BREAK_SECONDS
 DEFAULT_MAX_BREAK_FRACTION = AUDIO_CUE_PAIR_MAX_BREAK_FRACTION
+DEFAULT_ORIENT_WINDOW_S = AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS
 # An LLM-detected ad that overlaps a cue pair by this many seconds (on
 # either side) is treated as "already covers it" and the pair is skipped.
 OVERLAP_TOLERANCE_S = 5.0
@@ -63,6 +68,86 @@ class _Cue:
     label: Optional[str]
     template_id: Optional[int]
     role: str
+    effective_role: str = ''
+
+    def __post_init__(self):
+        if not self.effective_role:
+            self.effective_role = self.role
+
+
+def _ad_edges_ok(a):
+    try:
+        float(a['start'])
+        float(a['end'])
+        return True
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _is_exit_like(cue, idx, elig, ad_ends, window_s):
+    """True if `cue` is the first edge-eligible cue after an LLM ad END, within
+    the window -- i.e. it plays where content resumes after a detected break."""
+    if not ad_ends:
+        return False
+    i = bisect.bisect_right(ad_ends, cue.start) - 1
+    if i < 0:
+        return False
+    e = ad_ends[i]
+    if cue.start - e > window_s:
+        return False
+    if idx > 0 and elig[idx - 1].start > e:
+        return False  # an earlier eligible cue already followed this ad end
+    return True
+
+
+def _is_entry_like(cue, idx, elig, ad_starts, window_s):
+    """True if `cue` is the last edge-eligible cue before an LLM ad START, within
+    the window -- i.e. it plays where a detected break begins."""
+    if not ad_starts:
+        return False
+    i = bisect.bisect_left(ad_starts, cue.end)
+    if i >= len(ad_starts):
+        return False
+    s = ad_starts[i]
+    if s - cue.end > window_s:
+        return False
+    if idx + 1 < len(elig) and elig[idx + 1].start < s:
+        return False  # a later eligible cue precedes this ad start
+    return True
+
+
+def _orient_cues(cues, ads, window_s):
+    """Give each boundary-role cue an ephemeral effective_role of 'start'/'end'
+    from first-pass LLM ad edges, so a single both-ends cue pairs on the right
+    phase. Only demotes on positive, neighbor-confirmed evidence; anything
+    ambiguous stays 'boundary' (today's behavior). Never suppresses a missed
+    break whose cues have no nearby LLM ad (they stay 'boundary')."""
+    if window_s <= 0 or not ads:
+        return
+    ad_starts = sorted(float(a['start']) for a in ads if _ad_edges_ok(a))
+    ad_ends = sorted(float(a['end']) for a in ads if _ad_edges_ok(a))
+    if not ad_starts and not ad_ends:
+        return
+    # Edge-eligible cues only: non_ad (intro/outro/content_transition) cues never
+    # open or close and must not pollute the first-after / last-before adjacency.
+    elig = [c for c in cues
+            if c.role in AUDIO_CUE_START_EDGE_ROLES
+            or c.role in AUDIO_CUE_END_EDGE_ROLES]
+    exit_like = [_is_exit_like(c, i, elig, ad_ends, window_s) for i, c in enumerate(elig)]
+    entry_like = [_is_entry_like(c, i, elig, ad_starts, window_s) for i, c in enumerate(elig)]
+    for i, c in enumerate(elig):
+        if c.role != AUDIO_CUE_ROLE_DEFAULT:
+            continue  # only orient ambiguous 'boundary' cues
+        ex, en = exit_like[i], entry_like[i]
+        next_entry = i + 1 < len(elig) and entry_like[i + 1]
+        prev_exit = i - 1 >= 0 and exit_like[i - 1]
+        # Demote to closer-only only when the NEXT eligible cue is an entry (so
+        # the span between them is content, not a missed break). Symmetric on the
+        # entry side. This keeps a missed-break entry cue openable.
+        if ex and not en and next_entry:
+            c.effective_role = AUDIO_CUE_ROLE_END
+        elif en and not ex and prev_exit:
+            c.effective_role = AUDIO_CUE_ROLE_START
 
 
 def synthesize_ads_from_cue_pairs(
@@ -73,6 +158,7 @@ def synthesize_ads_from_cue_pairs(
     max_break_s: float = DEFAULT_MAX_BREAK_S,
     total_duration: float = 0.0,
     max_break_fraction: float = DEFAULT_MAX_BREAK_FRACTION,
+    orient_window_s: float = DEFAULT_ORIENT_WINDOW_S,
 ) -> List[Dict]:
     """Return ``ads`` with cue-pair-derived synthetic entries appended.
 
@@ -119,6 +205,8 @@ def synthesize_ads_from_cue_pairs(
     if len(cues) < 2:
         return list(ads)
 
+    _orient_cues(cues, ads, orient_window_s)
+
     # Greedy left-to-right pairing: each cue starts a candidate break with
     # the next cue inside the duration band. Once a pair is formed, both
     # cues are consumed so we do not chain a third cue onto the same break.
@@ -128,13 +216,13 @@ def synthesize_ads_from_cue_pairs(
         if consumed[i]:
             continue
         cue_a = cues[i]
-        if cue_a.role not in AUDIO_CUE_START_EDGE_ROLES:
+        if cue_a.effective_role not in AUDIO_CUE_START_EDGE_ROLES:
             continue
         for j in range(i + 1, len(cues)):
             if consumed[j]:
                 continue
             cue_b = cues[j]
-            if cue_b.role not in AUDIO_CUE_END_EDGE_ROLES:
+            if cue_b.effective_role not in AUDIO_CUE_END_EDGE_ROLES:
                 continue
             gap = cue_b.start - cue_a.end
             if gap < min_break_s:

@@ -215,6 +215,11 @@ AUDIO_CUE_PAIR_MAX_BREAK_SECONDS = 480.0  # Longest plausible cue-pair break
 # absolute MAX_BREAK_SECONDS cap would pass it. On a 6-minute episode the 480s
 # absolute cap never bites; this does.
 AUDIO_CUE_PAIR_MAX_BREAK_FRACTION = 0.5
+# Max gap (s) between an LLM ad edge and a boundary-role template cue for that
+# cue to be oriented as an ad entry or exit before cue-pair synthesis. Must
+# exceed the teaser gap between an opening ad's end and the first content cue.
+# 0 disables orientation (reverts to greedy left-to-right pairing).
+AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS = 20.0
 # Cue-candidate recurrence (episode-page "find candidates" scan). A real cue
 # repeats; a one-off sound does not. The scan generates one Chromaprint
 # fingerprint of the whole episode and finds windows that recur at least
@@ -377,6 +382,8 @@ def audio_cue_type_role(cue_type):
 # the default type's role.
 AUDIO_CUE_ROLE_DEFAULT = audio_cue_type_role(AUDIO_CUE_TYPE_DEFAULT)  # 'boundary'
 AUDIO_CUE_ROLE_NON_AD = 'non_ad'  # intro/outro: never snaps or pairs
+AUDIO_CUE_ROLE_START = 'start'   # opener-only (ad entry): opens a cue pair
+AUDIO_CUE_ROLE_END = 'end'       # closer-only (ad exit): closes a cue pair
 # Cue signal source: a precise template match vs the coarse spectral fallback.
 # Only template cues may create ads or move ad edges; spectral cues are
 # LLM-prompt evidence only. Centralized so the gate is never re-typed.

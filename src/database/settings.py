@@ -101,6 +101,7 @@ class SettingsMixin:
             AUDIO_CUE_CAPTURE_MAX_INTRO_SECONDS, AUDIO_CUE_CAPTURE_MAX_OUTRO_SECONDS,
             AUDIO_CUE_PAIR_CONFIDENCE, AUDIO_CUE_PAIR_MIN_BREAK_SECONDS,
             AUDIO_CUE_PAIR_MAX_BREAK_SECONDS,
+            AUDIO_CUE_PAIR_MAX_BREAK_FRACTION, AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS,
             AUDIO_CUE_FORMANT_ATTEN_DB,
         )
         from llm_client import get_effective_provider
@@ -182,6 +183,8 @@ class SettingsMixin:
             'audio_cue_pair_confidence': str(AUDIO_CUE_PAIR_CONFIDENCE),
             'audio_cue_pair_min_break_seconds': str(AUDIO_CUE_PAIR_MIN_BREAK_SECONDS),
             'audio_cue_pair_max_break_seconds': str(AUDIO_CUE_PAIR_MAX_BREAK_SECONDS),
+            'audio_cue_pair_max_break_fraction': str(AUDIO_CUE_PAIR_MAX_BREAK_FRACTION),
+            'audio_cue_pair_orient_window_seconds': str(AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS),
         }
 
         if key in defaults:
