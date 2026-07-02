@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.32.1] - 2026-07-02
+
+### Fixed
+
+- Stale processing state (current_job and queued display entries) left by a container restart is cleared at startup before the queue processor thread starts, resetting the interrupted episode to pending so it can be reprocessed (#452). A corrupt processing_status.json is now treated as empty and rewritten instead of misbehaving.
+
 ## [2.32.0] - 2026-07-02
 
 ### Added
@@ -28,7 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The reviewer no longer describes spectral loudness bursts as ground-truth boundary markers.
-- Stale processing state (current_job and queued display entries) left by a container restart is now cleared at startup before the queue processor thread starts, resetting the interrupted episode to pending so it can be reprocessed (#452).
 
 ## [2.31.7] - 2026-07-02
 
