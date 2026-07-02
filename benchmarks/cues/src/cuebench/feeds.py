@@ -14,6 +14,8 @@ from urllib.parse import urlparse
 import feedparser
 import requests
 
+from config import APP_USER_AGENT, BROWSER_USER_AGENT
+
 logger = logging.getLogger("cuebench.feeds")
 
 _CACHE_ROOT = Path.home() / ".cache" / "minuspod-cuebench"
@@ -47,7 +49,7 @@ def fetch(
 
 def _fetch_from_rss(rss_url: str, max_episodes: int) -> List[Path]:
     logger.info("parsing RSS: %s", rss_url)
-    feed = feedparser.parse(rss_url)
+    feed = feedparser.parse(rss_url, request_headers={'User-Agent': APP_USER_AGENT})
     if feed.bozo and not feed.entries:
         raise RuntimeError(f"could not parse feed: {rss_url}")
 
@@ -86,7 +88,12 @@ def _download(url: str, dest_dir: Path) -> Optional[Path]:
 
     logger.info("downloading: %s", url)
     try:
-        with requests.get(url, stream=True, timeout=60) as resp:
+        with requests.get(
+            url,
+            stream=True,
+            timeout=60,
+            headers={'User-Agent': BROWSER_USER_AGENT},
+        ) as resp:
             resp.raise_for_status()
             written = 0
             with open(local, "wb") as fh:

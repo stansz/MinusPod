@@ -20,8 +20,8 @@ from audio_analysis.cue_features import (
 )
 
 
-# Maximum cue length that will be decoded (mirrors api/cue_templates.py).
-_MAX_CUE_SECONDS = 10.0
+# Offline permissive bound = settings max for intro/outro captures
+TEMPLATE_DECODE_MAX_SECONDS = 120.0
 _SCHEMA_VERSION = 2
 
 
@@ -51,7 +51,7 @@ def load_template(source: Path) -> Dict[str, Any]:
 
     _validate_manifest(manifest, source)
 
-    wav_bytes = flac_to_wav(flac_bytes, _MAX_CUE_SECONDS)
+    wav_bytes = flac_to_wav(flac_bytes, TEMPLATE_DECODE_MAX_SECONDS)
     pcm_blob, duration_s = _decode_wav(wav_bytes, source)
 
     pcm = int16_bytes_to_pcm(pcm_blob)
