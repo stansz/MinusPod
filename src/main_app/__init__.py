@@ -629,6 +629,7 @@ register_routes(app)
 from main_app.feeds import refresh_rss_feed, refresh_all_feeds, invalidate_feed_cache, get_feed_map
 from main_app.processing import start_background_processing
 from main_app.background import background_rss_refresh, background_queue_processor, reset_stuck_processing_episodes
+from status_service import reconcile_startup_state
 
 
 # Startup initialization (runs when module is imported by gunicorn)
@@ -647,6 +648,7 @@ def _startup():
     # Leader-only - the followers would just race the same UPDATE.
     if is_leader:
         reset_stuck_processing_episodes()
+        reconcile_startup_state(db)
 
     # Register signal handlers for graceful shutdown (every worker needs them).
     signal.signal(signal.SIGTERM, graceful_shutdown)

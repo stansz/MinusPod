@@ -160,3 +160,19 @@ def app_client():
 
     with app.test_client() as client:
         yield client
+
+
+@pytest.fixture(autouse=True)
+def _reset_rss_circuit_breakers():
+    """Clear the host-keyed RSS breaker registry between tests.
+
+    The registry is module-global; failed fetches in one test (e.g. fake
+    example.com feeds) can open a host's breaker and make an unrelated
+    later test's fetch bail before its mocks are reached.
+    """
+    yield
+    try:
+        import rss_parser
+        rss_parser._rss_circuit_breakers.clear()
+    except ImportError:
+        pass
