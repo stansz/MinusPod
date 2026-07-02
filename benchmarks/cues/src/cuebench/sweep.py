@@ -140,13 +140,19 @@ def _sweep_one_profile(
         row["id"]: [] for row in template_rows
     }
     per_id_peak: Dict[int, float] = {row["id"]: 0.0 for row in template_rows}
+    # per-episode match positions: per_id_episodes[tid][episode_path] = [{start,end,score}]
+    per_id_episodes: Dict[int, Dict[str, List[Dict[str, float]]]] = {
+        row["id"]: {} for row in template_rows
+    }
 
     for path in audio_paths:
+        path_str = str(path)
         logger.info("scanning %s (atten=%.1f dB)", path, atten_db)
-        signals, debug = matcher.detect_with_debug(str(path))
+        signals, debug = matcher.detect_with_debug(path_str)
         for sig in signals:
-            score = (sig.details or {}).get("score", sig.confidence)
-            tid = (sig.details or {}).get("template_id")
+            details = sig.details or {}
+            score = details.get("score", sig.confidence)
+            tid = details.get("template_id")
             if tid not in per_id_scores:
                 logger.warning(
                     "signal has unknown template_id %r; skipping from all_scores"
@@ -156,6 +162,12 @@ def _sweep_one_profile(
                 continue
             all_scores.append(score)
             per_id_scores[tid].append(score)
+            episode_matches = per_id_episodes[tid].setdefault(path_str, [])
+            episode_matches.append({
+                "start": float(sig.start),
+                "end": float(sig.end),
+                "score": float(score),
+            })
         for t in debug.get("templates", []):
             tid = t["id"]
             if tid in per_id_peak:
@@ -170,6 +182,7 @@ def _sweep_one_profile(
             "cue_type": row["cue_type"],
             "duration_s": row["duration_s"],
             "scores": scores,
+            "episodes": per_id_episodes.get(tid, {}),
             "histogram": _build_histogram(scores),
             "threshold_table": _build_threshold_table(scores),
             "peak_score": round(per_id_peak.get(tid, 0.0), 3),

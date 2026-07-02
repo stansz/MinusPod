@@ -140,25 +140,43 @@ def _render_md(sweep: Dict[str, Any], scan: Optional[Dict[str, Any]]) -> str:
 
     # Scan eval
     if scan:
-        lines.append("## Chromaprint discovery eval")
+        lines.append("## Discovery scan eval")
         lines.append("")
         if not scan.get("available"):
             lines.append(f"Skipped: {scan.get('skip_reason', 'unavailable')}")
+            lines.append("")
         else:
-            for ep_res in scan.get("results", []):
-                lines.append(f"### {ep_res.get('episode', '')}")
-                lines.append("")
-                for tid_str, info in ep_res.get("per_template", {}).items():
-                    label = info.get("label", tid_str)
-                    found = info.get("found", False)
-                    rank = info.get("rank")
-                    span_acc = info.get("span_accuracy")
-                    gt = info.get("ground_truth_count", 0)
-                    lines.append(
-                        f"- {label}: found={found}"
-                        f" rank={rank} span_accuracy={span_acc}"
-                        f" ground_truth={gt}"
-                    )
+            ep_results = scan.get("results", [])
+            if ep_results:
+                lines.append(
+                    "| Episode | Template | found | rank | span_accuracy"
+                    " | matched/total | candidates_total |"
+                )
+                lines.append(
+                    "|---------|----------|-------|------|---------------"
+                    "|---------------|------------------|"
+                )
+                for ep_res in ep_results:
+                    ep_name = Path(ep_res.get("episode", "")).name or ep_res.get("episode", "")
+                    for tid_str, info in ep_res.get("per_template", {}).items():
+                        label = info.get("label", tid_str)
+                        found = info.get("found", False)
+                        rank = info.get("rank", "-")
+                        span_acc = info.get("span_accuracy", "-")
+                        matched = info.get("matched_occurrences", 0)
+                        gt_count = info.get("ground_truth_count", 0)
+                        cands = info.get("candidates_total", 0)
+                        skip = info.get("skip_reason", "")
+                        if skip:
+                            lines.append(
+                                f"| {ep_name} | {label} | - | - | - | - | - |"
+                                f" (skip: {skip})"
+                            )
+                        else:
+                            lines.append(
+                                f"| {ep_name} | {label} | {found} | {rank}"
+                                f" | {span_acc} | {matched}/{gt_count} | {cands} |"
+                            )
                 lines.append("")
 
     return "\n".join(lines) + "\n"
