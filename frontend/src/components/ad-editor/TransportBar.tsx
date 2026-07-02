@@ -46,60 +46,67 @@ function TransportBar({
 }: TransportBarProps) {
   return (
     <div className="mt-3 px-3 py-2 rounded-lg bg-secondary/50 border border-border">
-      {/* Primary controls -- the transport cluster is centered as the focal
-          element; the speed selector is pinned to the right of the SAME row
-          (absolute, so it never wraps to its own line on a narrow modal). */}
-      <div className="relative flex items-center justify-center gap-0.5">
-        <button type="button" onClick={onSeekToStart} className={`p-1.5 rounded ${ghostBtn}`} title="Jump to START pin">
-          <SkipBack className="w-4 h-4" />
-        </button>
-        <button type="button" onClick={() => onSeekRelative(-10)} className={`p-1.5 rounded ${ghostBtn}`} title="Back 10s">
-          <Rewind className="w-4 h-4" />
-        </button>
-        <button type="button" onClick={onTogglePlay} className={`p-1.5 rounded-full ${primaryBtn}`} title="Play / pause (Space)">
-          {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-        </button>
-        {onPlaySelection && (
-          <button
-            type="button"
-            onClick={onPlaySelection}
-            className={`ml-0.5 ${selectionBtn}`}
-            title="Play the selection only"
-            aria-label="Play selection"
-          >
-            <Play className="w-4 h-4" />
+      {/* Primary controls. Three columns: the two 1fr side columns are equal,
+          so the transport cluster in the center auto column stays truly
+          centered no matter how wide the modal gets; the speed selector lives
+          in the right column (its own space, so it can never overlap a
+          button). */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1">
+        <div aria-hidden="true" />
+        <div className="flex items-center justify-center gap-1">
+          <button type="button" onClick={onSeekToStart} className={`p-1.5 rounded ${ghostBtn}`} title="Jump to START pin">
+            <SkipBack className="w-4 h-4" />
           </button>
-        )}
-        <button type="button" onClick={() => onSeekRelative(10)} className={`p-1.5 rounded ${ghostBtn}`} title="Forward 10s">
-          <FastForward className="w-4 h-4" />
-        </button>
-        <button type="button" onClick={onSeekToEnd} className={`p-1.5 rounded ${ghostBtn}`} title="Jump to END pin">
-          <SkipForward className="w-4 h-4" />
-        </button>
-        <button type="button" onClick={onStop} className={`p-1.5 rounded ${ghostBtn}`} title="Stop (pause + return to START)">
-          <Square className="w-4 h-4" />
-        </button>
-        <label className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center" title="Playback speed">
-          <span className="sr-only">Playback speed</span>
-          <select
-            value={playbackRate}
-            onChange={(e) => onPlaybackRateChange(Number(e.target.value))}
-            aria-label="Playback speed"
-            className={`appearance-none h-7 pl-1.5 pr-4 rounded text-xs font-semibold tabular-nums cursor-pointer ${ghostBtn} ${playbackRate !== 1 ? 'text-foreground' : ''} focus:outline-hidden focus:ring-2 focus:ring-ring`}
-          >
-            {PLAYBACK_RATES.map((r) => (
-              <option key={r} value={r}>{r}&times;</option>
-            ))}
-          </select>
-          <svg
-            className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 opacity-60"
-            viewBox="0 0 12 12"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path d="M3 5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </label>
+          <button type="button" onClick={() => onSeekRelative(-10)} className={`p-1.5 rounded ${ghostBtn}`} title="Back 10s">
+            <Rewind className="w-4 h-4" />
+          </button>
+          <button type="button" onClick={onTogglePlay} className={`p-1.5 rounded-full ${primaryBtn}`} title="Play / pause (Space)">
+            {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+          </button>
+          {onPlaySelection && (
+            <button
+              type="button"
+              onClick={onPlaySelection}
+              className={selectionBtn}
+              title="Play the selection only"
+              aria-label="Play selection"
+            >
+              <Play className="w-4 h-4" />
+            </button>
+          )}
+          <button type="button" onClick={() => onSeekRelative(10)} className={`p-1.5 rounded ${ghostBtn}`} title="Forward 10s">
+            <FastForward className="w-4 h-4" />
+          </button>
+          <button type="button" onClick={onSeekToEnd} className={`p-1.5 rounded ${ghostBtn}`} title="Jump to END pin">
+            <SkipForward className="w-4 h-4" />
+          </button>
+          <button type="button" onClick={onStop} className={`p-1.5 rounded ${ghostBtn}`} title="Stop (pause + return to START)">
+            <Square className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex justify-end">
+          <label className="relative inline-flex items-center" title="Playback speed">
+            <span className="sr-only">Playback speed</span>
+            <select
+              value={playbackRate}
+              onChange={(e) => onPlaybackRateChange(Number(e.target.value))}
+              aria-label="Playback speed"
+              className={`appearance-none box-border h-8 leading-none pl-2 pr-6 rounded text-xs font-semibold tabular-nums cursor-pointer ${ghostBtn} ${playbackRate !== 1 ? 'text-foreground' : ''} focus:outline-hidden focus:ring-2 focus:ring-ring`}
+            >
+              {PLAYBACK_RATES.map((r) => (
+                <option key={r} value={r}>{r}&times;</option>
+              ))}
+            </select>
+            <svg
+              className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 opacity-60"
+              viewBox="0 0 12 12"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path d="M3 5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </label>
+        </div>
       </div>
       {/* Secondary row: selection readout, centered under the controls. */}
       <div className="mt-2 flex items-center justify-center gap-2 flex-wrap text-xs tabular-nums text-muted-foreground">

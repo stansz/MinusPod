@@ -6,11 +6,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.31.3] - 2026-07-01
+
+### Changed
+
+- The transport controls use a three-column layout: the transport cluster is centered and the playback speed selector sits in its own column on the right, so it is on the same line without overlapping the Stop button. The speed selector is sized to match the transport buttons.
+
 ## [2.31.2] - 2026-07-01
 
 ### Changed
 
-- The playback speed control stays on the transport row, pinned to the right, instead of dropping to its own line on a narrow screen. The transport buttons stay centered.
+- The playback speed control moved onto the transport row instead of dropping to its own line on a narrow screen.
 
 ## [2.31.1] - 2026-07-01
 
