@@ -147,6 +147,26 @@ def scan(
 
 
 @app.command()
+def fetch(
+    rss: str = typer.Option(..., "--rss", help="Podcast RSS URL to fetch episodes from"),
+    max_episodes: int = typer.Option(5, "--max-episodes", help="Max episodes to download"),
+) -> None:
+    """Pre-download episodes into the cache without running a sweep."""
+    _setup_logging()
+    try:
+        paths = feeds_mod.fetch(rss, max_episodes=max_episodes, audio_files=None)
+    except Exception as e:
+        typer.echo(f"error fetching episodes: {e}", err=True)
+        raise typer.Exit(1)
+
+    for path in paths:
+        typer.echo(str(path))
+
+    cache_dir = paths[0].parent if paths else feeds_mod.cache_dir_for(rss)
+    typer.echo(f"{len(paths)} episodes in cache {cache_dir}")
+
+
+@app.command()
 def report(
     output_dir: Optional[Path] = typer.Option(None, "--output-dir"),
 ) -> None:

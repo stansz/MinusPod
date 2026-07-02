@@ -28,6 +28,14 @@ uv run cuebench load-template /path/to/export.zip
 uv run cuebench load-template /path/to/dir/          # must contain cue.flac + template.json
 ```
 
+### fetch
+
+Pre-download episodes into the cache without running a sweep.
+
+```
+uv run cuebench fetch --rss "https://feeds.megaphone.fm/pivot" --max-episodes 5
+```
+
 ### sweep
 
 Sweep templates across episode audio and write `results/report.md` +
