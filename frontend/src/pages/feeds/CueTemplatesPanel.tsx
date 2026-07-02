@@ -843,11 +843,11 @@ function CueScanModal({ slug, onClose }: CueScanModalProps) {
                   onClick={() => applySuggested(s.suggested as number)}
                   disabled={!canApply}
                 >
-                  Apply as global default
+                  Apply to this feed
                 </button>
               )}
               {applied && (
-                <span className="ml-2 text-xs text-green-600 dark:text-green-400">Saved as global default</span>
+                <span className="ml-2 text-xs text-green-600 dark:text-green-400">Saved as feed override</span>
               )}
             </div>
           );
