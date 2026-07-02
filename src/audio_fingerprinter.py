@@ -203,26 +203,47 @@ def _find_shared_segments(target, siblings, win, similarity, min_matches,
             if len(cand) < min_matches:
                 break
             alive, hi = cand, hi + step
-        # Fine-edge refinement: walk each boundary 1 subfp at a time up to
-        # (step-1) steps, testing a 4-subfp window that includes the new subfp.
-        # A 4-subfp (128-bit) window is the minimum meaningful slice at the
-        # 0.73 threshold; a 1-subfp (32-bit) slice is statistically noise.
-        fine_win = min(4, win)
+        # Fine-edge refinement (bidirectional, survivor-preserving). The coarse
+        # step is `step` subfps, so each boundary can be off by up to step-1: a
+        # partially-matching 8-subfp step can OVERSHOOT (its tail is noise yet the
+        # slice still cleared similarity) or a bounds/similarity stop can leave the
+        # true edge a few subfps beyond. Per edge we first RETRACT past overshoot,
+        # then EXTEND, one subfp at a time, using an R-subfp (>=128-bit) window --
+        # the minimum meaningful slice at 0.73; a 1-subfp (32-bit) slice is noise.
+        #
+        # Invariant: `alive` NEVER shrinks here. Every accepted step must preserve
+        # the FULL coarse survivor set (len(_slice_ok(...)) == len(alive)); we only
+        # read _slice_ok's length and never reassign `alive`. Sub-second edge detail
+        # must be common to every reported sibling: trading a sibling for ~0.125s of
+        # span degrades the count surfaced as episodeMatches.
+        R = min(4, win)
         fine_limit = max(1, step - 1)
+        # hi edge: retract overshoot, then extend.
         for _ in range(fine_limit):
-            if lo - 1 < claimed_until or (hi - (lo - 1)) > max_len:
+            if (hi - lo) <= win or hi - R < lo:
                 break
-            cand = _slice_ok(alive, lo - fine_win, fine_win)
-            if len(cand) < min_matches:
+            if len(_slice_ok(alive, hi - R, R)) == len(alive):
                 break
-            alive, lo = cand, lo - 1
+            hi -= 1
         for _ in range(fine_limit):
-            if hi + fine_win > len(target) or (hi + 1 - lo) > max_len:
+            if (hi + 1 - lo) > max_len or hi + 1 > len(target):
                 break
-            cand = _slice_ok(alive, hi, fine_win)
-            if len(cand) < min_matches:
+            if len(_slice_ok(alive, hi + 1 - R, R)) < len(alive):
                 break
-            alive, hi = cand, hi + 1
+            hi += 1
+        # lo edge: retract overshoot, then extend.
+        for _ in range(fine_limit):
+            if (hi - lo) <= win:
+                break
+            if len(_slice_ok(alive, lo, R)) == len(alive):
+                break
+            lo += 1
+        for _ in range(fine_limit):
+            if (hi - (lo - 1)) > max_len or lo - 1 < claimed_until:
+                break
+            if len(_slice_ok(alive, lo - 1, R)) < len(alive):
+                break
+            lo -= 1
         if len(alive) >= min_matches and (hi - lo) >= min_len:
             found.append((lo, hi, len(alive)))
             seg_end = hi

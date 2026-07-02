@@ -134,8 +134,12 @@ def test_fine_edge_recovery_sub_step():
                                  min_matches=2, min_len=win, max_len=400)
     assert len(segs) == 1
     # Both edges must be recovered within 4 subfps (half a step) of true boundaries.
-    assert abs(segs[0][0] - 35) <= 4       # lo-edge fine refinement
-    assert abs(segs[0][1] - (35 + 40)) <= 4  # hi-edge fine refinement
+    # The lo edge here is already recovered by the COARSE backward walk (step=8
+    # lands lo at 32, within 4 of the true 35); the hi edge is where fine extension
+    # earns its keep. See the dedicated sensitivity tests below for edge cases the
+    # fine pass alone must handle.
+    assert abs(segs[0][0] - 35) <= 4       # lo-edge (coarse backward walk)
+    assert abs(segs[0][1] - (35 + 40)) <= 4  # hi-edge (fine extension)
 
 
 def test_max_len_per_zone_bound():
@@ -166,3 +170,75 @@ def test_claimed_run_does_not_cross_into_prior():
                                  min_matches=2, min_len=16, max_len=400)
     assert len(segs) == 1  # only one result, no overlapping duplicate
     assert segs[0][0] >= 0 and segs[0][1] <= 8 + 48 + 8  # within plausible range
+
+
+def test_fine_hi_extends_past_coarse_residual():
+    # SENSITIVITY: the true shared end sits 6 subfps past where the coarse forward
+    # walk can reach. The siblings END exactly at the segment's end, so any coarse
+    # step=8 slice whose sibling-aligned tail runs off the array is bounds-rejected;
+    # coarse stalls at hi=64 (residual 6 to the true end 70). Only the fine R=4
+    # extension, which fits inside the sibling, can carry hi to the true boundary.
+    # Coarse-only guards: with fine disabled hi stays 64, |64-70|=6 > 1 -> fails.
+    rng = np.random.default_rng(42)
+    step = 8
+    win = 16
+    seg = _rand(46, rng)  # true shared run, ends at target index 24+46 = 70
+    target = np.concatenate([_rand(24, rng), seg, _rand(40, rng)])
+    sib1 = np.concatenate([_rand(24, rng), seg])  # ends AT seg end, no trailing room
+    sib2 = np.concatenate([_rand(24, rng), seg])
+    segs = _find_shared_segments(target, [sib1, sib2], win=win, step=step,
+                                 similarity=0.73, min_matches=2, min_len=win,
+                                 max_len=400)
+    assert len(segs) == 1
+    assert abs(segs[0][1] - 70) <= 1  # hi within 1 subfp of the true end
+
+
+def test_fine_hi_retracts_coarse_overshoot():
+    # SENSITIVITY: the shared run truly ends at target index 68, but the trailing
+    # coarse 8-subfp slice [64,72) still clears 0.73 for both siblings on its
+    # leading (shared) bits, so coarse OVERSHOOTS to hi=72 into per-episode noise.
+    # Only the bidirectional fine pass retracts hi back to the boundary, and it must
+    # do so WITHOUT dropping either survivor. Coarse-only guards: hi stays 72,
+    # |72-68|=4 > 1 -> fails; the old extend-only fine pass could not retract either.
+    rng = np.random.default_rng(0)
+    step = 8
+    win = 16
+    seg = _rand(44, rng)  # true shared run, ends at target index 24+44 = 68
+    # After seg the content is per-episode noise (differs per sibling), so the
+    # trailing 4-subfp window loses survivors and retraction fires.
+    target = np.concatenate([_rand(24, rng), seg, _rand(30, rng)])
+    sib1 = np.concatenate([_rand(24, rng), seg, _rand(30, rng)])
+    sib2 = np.concatenate([_rand(24, rng), seg, _rand(30, rng)])
+    segs = _find_shared_segments(target, [sib1, sib2], win=win, step=step,
+                                 similarity=0.73, min_matches=2, min_len=win,
+                                 max_len=400)
+    assert len(segs) == 1
+    _, end, count = segs[0]
+    assert abs(end - 68) <= 1  # retracted to within 1 subfp of the true boundary
+    assert count == 2  # no survivor traded away for the retract
+
+
+def test_fine_pass_preserves_survivor_count():
+    # SENSITIVITY (reviewer repro): 3 siblings share seg; right after the true
+    # boundary sib3 diverges into noise while sib1/sib2 share a short 3-subfp
+    # continuation. Coarse stops at the boundary keeping all 3 survivors. The OLD
+    # extend-only fine pass absorbed sib1/sib2's continuation and dropped sib3
+    # (count 3 -> 2) for ~1 subfp of span. The redesigned fine pass only accepts a
+    # step when the FULL survivor set matches, so the count stays 3.
+    # Coarse-only/old-fine guards: count == 3 fails (old fine yields 2).
+    rng = np.random.default_rng(2)
+    step = 8
+    win = 16
+    seg = _rand(40, rng)  # shared by all three; true end at target index 16+40 = 56
+    cont = _rand(3, rng)  # short continuation shared by sib1/sib2 only
+    target = np.concatenate([_rand(16, rng), seg, cont, _rand(20, rng)])
+    sib1 = np.concatenate([_rand(16, rng), seg, cont, _rand(20, rng)])
+    sib2 = np.concatenate([_rand(16, rng), seg, cont, _rand(20, rng)])
+    sib3 = np.concatenate([_rand(16, rng), seg, _rand(26, rng)])  # diverges at 56
+    segs = _find_shared_segments(target, [sib1, sib2, sib3], win=win, step=step,
+                                 similarity=0.73, min_matches=2, min_len=win,
+                                 max_len=400)
+    assert len(segs) == 1
+    _, end, count = segs[0]
+    assert count == 3  # every reported sibling still present; no trade for span
+    assert end <= 56 + 4  # did not run far past where sib3 diverges (R-window bleed)
