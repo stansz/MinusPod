@@ -148,7 +148,12 @@ class StatusService:
                 self._write_status_file(status)
 
             return status
-        except (OSError, json.JSONDecodeError):
+        except json.JSONDecodeError:
+            logger.warning("processing_status.json is corrupt; treating as empty and rewriting clean")
+            empty = self._empty_status()
+            self._write_status_file(empty)
+            return empty
+        except OSError:
             return self._empty_status()
 
     def _write_status_file(self, status: dict):
@@ -462,3 +467,53 @@ class StatusService:
             ],
             'lastUpdated': status.last_updated
         }
+
+
+def reconcile_startup_state(db) -> None:
+    """Clear stale processing state left by the previous container run.
+
+    At boot, no job can legitimately be in-flight (single-process container).
+    Reads processing_status.json; if a current_job is present, resets that
+    episode's DB status to 'pending' and drops all queued_episodes display
+    entries so the UI is clean before the queue processor thread starts.
+
+    db - Database instance (provides get_connection())
+    """
+    ss = StatusService()
+    with ss._status_lock:
+        status = ss._read_status_file()
+        job = status.get('current_job')
+        changed = False
+
+        if job:
+            slug = job.get('slug', '')
+            episode_id = job.get('episode_id', '')
+            logger.warning(
+                f"Startup: clearing stale job from previous run: {slug}:{episode_id}"
+            )
+            # Mirror reset_stuck_processing_episodes: reset to pending, no retry penalty.
+            conn = db.get_connection()
+            conn.execute(
+                """UPDATE episodes SET
+                   status = 'pending',
+                   error_message = 'Reset after container restart (no retry penalty)'
+                   WHERE episode_id = ?
+                     AND podcast_id = (SELECT id FROM podcasts WHERE slug = ?)
+                     AND status = 'processing'""",
+                (episode_id, slug),
+            )
+            conn.commit()
+            status['current_job'] = None
+            changed = True
+
+        queued = status.get('queued_episodes', [])
+        if queued:
+            logger.warning(
+                f"Startup: dropping {len(queued)} stale queue display entries"
+            )
+            status['queued_episodes'] = []
+            changed = True
+
+        if changed:
+            status['last_updated'] = time.time()
+            ss._write_status_file(status)

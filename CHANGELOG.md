@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The reviewer no longer describes spectral loudness bursts as ground-truth boundary markers.
+- Stale processing state (current_job and queued display entries) left by a container restart is now cleared at startup before the queue processor thread starts, resetting the interrupted episode to pending so it can be reprocessed (#452).
 
 ## [2.31.7] - 2026-07-02
 
