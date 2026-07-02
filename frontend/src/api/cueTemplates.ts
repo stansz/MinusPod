@@ -63,9 +63,12 @@ export interface CueTemplate {
   hasAudio?: boolean;
   // Create-response only: how many times the captured cue recurs in its source
   // episode, and whether that makes it a weak (non-recurring) ad-break cue.
-  // Absent on list rows.
+  // longCapture is true when an ad-break cue exceeds captureWarnSeconds (issue
+  // #350: long captures degrade match quality). Absent on list rows.
   selfMatchCount?: number;
   weakCue?: boolean;
+  longCapture?: boolean;
+  captureWarnSeconds?: number;
 }
 
 export interface CueTemplateListResponse {

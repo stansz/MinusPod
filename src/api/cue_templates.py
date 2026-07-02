@@ -42,7 +42,7 @@ from audio_analysis.cue_threshold_suggest import suggest_cue_threshold
 from audio_fingerprinter import AudioFingerprinter
 from config import (
     AUDIO_CUE_CAPTURE_MIN_SECONDS, AUDIO_CUE_CAPTURE_MAX_SECONDS,
-    AUDIO_CUE_CAPTURE_MAX_BY_TYPE,
+    AUDIO_CUE_CAPTURE_MAX_BY_TYPE, AUDIO_CUE_CAPTURE_WARN_AD_SECONDS,
     AUDIO_CUE_FREQ_MAX_HZ,
     AUDIO_CUE_SCAN_FREQ_MIN_HZ, AUDIO_CUE_SCAN_PROMINENCE_DB,
     AUDIO_CUE_SCAN_RELEASE_DB, AUDIO_CUE_SCAN_MAX_DURATION_SECONDS,
@@ -245,8 +245,9 @@ def create_cue_template(slug):
     # source episode will never bracket a break, so warn the user at save time.
     # Skip intro/outro (non_ad) cues -- they are meant to play once. Best-effort:
     # an fpcalc failure leaves selfMatchCount at 0 (treated as unknown, no warn).
+    is_ad_role = audio_cue_type_role(cue_type) != AUDIO_CUE_ROLE_NON_AD
     self_match_count = 0
-    if audio_cue_type_role(cue_type) != AUDIO_CUE_ROLE_NON_AD:
+    if is_ad_role:
         try:
             similarity = db.get_setting_float(
                 'audio_cue_recurrence_similarity', AUDIO_CUE_RECURRENCE_SIMILARITY)
@@ -256,6 +257,14 @@ def create_cue_template(slug):
             logger.exception('cue self-match failed for template %s', template_id)
     meta['selfMatchCount'] = self_match_count
     meta['weakCue'] = self_match_count == 1
+
+    # Long-capture nudge: ad-break captures longer than the warn threshold
+    # degrade match quality (issue #350: 9.8s capture matched far worse than
+    # 1.5-2.5s clips of the same cue). Non-ad roles are exempt -- long intro/
+    # outro captures are expected and intentional.
+    meta['longCapture'] = (
+        is_ad_role and (end_s - start_s) > AUDIO_CUE_CAPTURE_WARN_AD_SECONDS)
+    meta['captureWarnSeconds'] = AUDIO_CUE_CAPTURE_WARN_AD_SECONDS
     return json_response({'template': meta}, status=201)
 
 

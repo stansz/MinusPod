@@ -5664,6 +5664,40 @@ components:
           description: >
             Listing only. False for a network template shared from another feed
             in this network (read-only here, managed on the feed that created it).
+        hasAudio:
+          type: boolean
+          description: >
+            Listing only. True when the template has a stored PCM blob (play
+            button is shown only when true or absent for older server rows).
+        selfMatchCount:
+          type: integer
+          description: >
+            Create-response only. How many times the captured cue recurs in its
+            source episode (counted via audio fingerprint). 0 means the fingerprint
+            failed or returned no matches (treated as unknown, no warn). Absent on
+            list rows.
+        weakCue:
+          type: boolean
+          description: >
+            Create-response only. True when selfMatchCount is exactly 1 -- the
+            cue appears only once in its source episode and therefore cannot
+            bracket an ad break reliably. The UI warns the user and requires a
+            second Save to proceed. Absent on list rows.
+        longCapture:
+          type: boolean
+          description: >
+            Create-response only. True when the captured duration exceeds
+            captureWarnSeconds for ad-break-role cue types (ad_break_boundary,
+            ad_break_start, ad_break_end). Issue #350 field data showed a 9.8s
+            capture matched far worse than 1.5-2.5s clips of the same cue. Non-ad
+            types (show_intro, show_outro, content_transition) are always false.
+            Absent on list rows.
+        captureWarnSeconds:
+          type: number
+          description: >
+            Create-response only. The threshold used for longCapture. Present
+            whenever the create route returns so the UI can display a consistent
+            hint without a separate config fetch. Absent on list rows.
     BulkPatternOp:
       type: object
       required: [confirm, expected_count]

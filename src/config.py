@@ -228,6 +228,10 @@ AUDIO_CUE_CAPTURE_MIN_SECONDS = 0.20    # Shortest cue a user may bracket (match
 AUDIO_CUE_CAPTURE_MAX_SECONDS = 10.0    # Longest cue a user may bracket
 AUDIO_CUE_CAPTURE_MAX_INTRO_SECONDS = 60.0  # Longest show-intro stinger a user may bracket
 AUDIO_CUE_CAPTURE_MAX_OUTRO_SECONDS = 60.0  # Longest show-outro stinger a user may bracket
+# Issue #350 field data: a 9.8s ad-break capture matched far worse than
+# 1.5-2.5s clips of the same cue. Beyond this threshold, long-template
+# match quality degrades significantly; warn the user at save time.
+AUDIO_CUE_CAPTURE_WARN_AD_SECONDS = 5.0
 AUDIO_CUE_PAIR_CONFIDENCE = 0.85        # Min cue confidence to synthesize an ad from a pair
 AUDIO_CUE_PAIR_MIN_BREAK_SECONDS = 30.0   # Shortest plausible cue-pair break
 AUDIO_CUE_PAIR_MAX_BREAK_SECONDS = 480.0  # Longest plausible cue-pair break
