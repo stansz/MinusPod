@@ -10,27 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Per-feed cue match threshold override: feed settings accept a match_threshold field; threshold-suggest Apply writes it directly to the feed override rather than the global setting.
-- Ad-boundary affinity typing on recurring cue suggestions: candidates carry a boundaryAffinity ratio and affinitySource ('episode' or 'siblings'); sibling-episode fallback fires when the current episode has no boundary history.
-- Near-miss cue telemetry: matches that fall in [near_miss_floor, threshold) are recorded with outcome='below_threshold' and never affect cuts; aggregate histogram, unused_reason, and cue-pair skip diagnostics exposed in the API.
-- Long-capture warning appended to ad-break cue save confirmation when the capture span exceeds 5s.
-- Spectral cue cap in the detection prompt: at most 5 spectral cues per window, ordered by (confidence, start ascending); a note is appended when cues are omitted.
-- Offline cue eval harness under benchmarks/cues and first real-audio cue fixtures in tests/fixtures/cues with integration tests.
+- Per-feed cue match threshold: feeds accept a cueTemplateScoreOverride (0.30-0.99) that beats the global audio_cue_template_score, and the threshold-suggest Apply button now writes this override instead of the global setting.
+- Recurring cue suggestions are typed and ranked by how often their occurrences land on known ad boundaries (boundaryAffinity, adBoundaryHits, affinitySource); when the scanned episode has no ad history, up to two recent episodes are checked instead.
+- Near-miss cue telemetry: template matches just under the threshold are recorded as below_threshold rows that never affect cuts, and unused detections carry a reason (covered, out of reach, below snap confidence, or a cue-pair skip reason) plus the distance to the nearest ad edge. The aggregate endpoint gains a near-miss histogram and reason counts.
+- Saving an ad-break cue longer than 5s warns once that tight clips match better; a second Save keeps it.
+- The detection prompt caps unlabelled (spectral) cues at 5 per window and frames them as weak hints; learned template cues are never capped.
+- Offline cue eval harness (benchmarks/cues): sweep templates against real episodes, suggest thresholds, A/B formant attenuation, and score the discovery scan. First real-audio cue fixtures and matcher tests (tests/fixtures/cues).
 
 ### Changed
 
-- Intro/outro cue suggestions can now span up to the capture ceiling (was hard-capped at 30s); sub-second edge refinement applied after the initial match window.
-- Threshold-suggest Apply sets a per-feed override; the global setting is not modified.
-- Snap window widened: audio_cue_snap_lead_seconds default raised from 4.0s to 10.0s; audio_cue_snap_lag_seconds default raised from 2.0s to 4.0s. Both are DB-settable in [0.5, 30].
-- Cue selection switches to nearest-first ordering (key: -round(distance, 1), confidence) in both _pick_cue_for_start and _pick_cue_for_end.
-- When 2+ eligible cues fall in one edge's snap window the snap record includes ambiguous: true and candidates: N for the reviewer prompt.
-- Cue lines in detection and review prompts show spans and durations.
-- Content-transition framing unified across detection and review stages.
-- Reviewer cue radius follows review_max_boundary_shift rather than a hard constant.
+- Intro/outro cue suggestions can span up to the capture ceiling (previously hard-capped at 30s) and their edges are refined to roughly 0.1s.
+- Boundary snap reaches farther (10s lead / 4s lag, both settings, range 0.5-30) and picks the nearest eligible cue instead of the highest-confidence one; when several cues are in reach, the reviewer is told.
+- Cue lines in prompts show span and duration, not just a start time.
+- Content-transition cues get the same framing in the detection and review passes: they may or may not sit at an ad boundary, and never force a cut on their own.
+- The reviewer's cue-evidence radius follows review_max_boundary_shift instead of a hard 60s.
 
 ### Fixed
 
-- Reviewer no longer describes spectral loudness bursts as ground-truth boundary markers.
+- The reviewer no longer describes spectral loudness bursts as ground-truth boundary markers.
 
 ## [2.31.7] - 2026-07-02
 
