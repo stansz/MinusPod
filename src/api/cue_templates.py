@@ -51,12 +51,13 @@ from config import (
     AUDIO_CUE_XEP_HEAD_SECONDS, AUDIO_CUE_XEP_TAIL_SECONDS,
     AUDIO_CUE_XEP_MAX_SIBLINGS, AUDIO_CUE_XEP_SIBLING_LOOKBACK,
     AUDIO_CUE_XEP_MIN_MATCHES,
-    AUDIO_CUE_XEP_MIN_DURATION, AUDIO_CUE_XEP_MAX_DURATION,
+    AUDIO_CUE_XEP_MIN_DURATION,
     AUDIO_CUE_XEP_MAX_PER_ZONE, AUDIO_CUE_XEP_SIMILARITY,
     AUDIO_CUE_RECURRENCE_SIMILARITY, AUDIO_CUE_RECURRENCE_MIN_COUNT,
     AUDIO_CUE_FORMANT_ATTEN_DB,
     AUDIO_CUE_CANDIDATE_SCAN_STALE_SECONDS,
     AUDIO_CUE_TYPES, AUDIO_CUE_TYPE_DEFAULT, AUDIO_CUE_TYPE_SHOW_INTRO,
+    AUDIO_CUE_TYPE_SHOW_OUTRO,
     AUDIO_CUE_ROLE_NON_AD, audio_cue_type_role,
     is_template_cue,
     AUDIO_CUE_SUGGEST_FLOOR, AUDIO_CUE_SUGGEST_MAX_EPISODES,
@@ -175,15 +176,7 @@ def create_cue_template(slug):
         return error_response(
             'cueType must be one of: ' + ', '.join(sorted(AUDIO_CUE_TYPES)), 400)
     cap_min = db.get_setting_float('audio_cue_capture_min_seconds', AUDIO_CUE_CAPTURE_MIN_SECONDS)
-    cap_max = db.get_setting_float('audio_cue_capture_max_seconds', AUDIO_CUE_CAPTURE_MAX_SECONDS)
-    # Intro/outro stingers may run longer than the ad-break ceiling and are
-    # DB-settable per type; never drop below the user's global ad-break setting.
-    if cue_type in AUDIO_CUE_CAPTURE_MAX_BY_TYPE:
-        type_db_key = ('audio_cue_capture_max_intro_seconds'
-                       if cue_type == AUDIO_CUE_TYPE_SHOW_INTRO
-                       else 'audio_cue_capture_max_outro_seconds')
-        cap_max = max(cap_max, db.get_setting_float(
-            type_db_key, AUDIO_CUE_CAPTURE_MAX_BY_TYPE[cue_type]))
+    cap_max = _capture_ceiling(db, cue_type)
     if end_s - start_s < cap_min:
         return error_response(f'selection must be at least {cap_min:g} seconds', 400)
     if end_s - start_s > cap_max:
@@ -827,6 +820,24 @@ def _drop_speechlike_recurring(recurring, audio_path):
     return kept
 
 
+def _capture_ceiling(db, cue_type):
+    """Return the DB-configured max capture duration (s) for ``cue_type``.
+
+    For show_intro and show_outro the per-type DB key is checked first and
+    the result is never less than the global ad-break ceiling.
+    """
+    cap_max = db.get_setting_float('audio_cue_capture_max_seconds', AUDIO_CUE_CAPTURE_MAX_SECONDS)
+    if cue_type in AUDIO_CUE_CAPTURE_MAX_BY_TYPE:
+        type_db_key = (
+            'audio_cue_capture_max_intro_seconds'
+            if cue_type == AUDIO_CUE_TYPE_SHOW_INTRO
+            else 'audio_cue_capture_max_outro_seconds'
+        )
+        cap_max = max(cap_max, db.get_setting_float(
+            type_db_key, AUDIO_CUE_CAPTURE_MAX_BY_TYPE[cue_type]))
+    return cap_max
+
+
 def _run_cue_candidate_scan(podcast_id, episode_id, slug, audio_path,
                             similarity, min_count):
     """Background worker: find cue-template candidates, then persist them.
@@ -866,7 +877,8 @@ def _run_cue_candidate_scan(podcast_id, episode_id, slug, audio_path,
                 similarity=AUDIO_CUE_XEP_SIMILARITY,
                 min_matches=AUDIO_CUE_XEP_MIN_MATCHES,
                 min_duration=AUDIO_CUE_XEP_MIN_DURATION,
-                max_duration=AUDIO_CUE_XEP_MAX_DURATION,
+                intro_max_duration=_capture_ceiling(db, AUDIO_CUE_TYPE_SHOW_INTRO),
+                outro_max_duration=_capture_ceiling(db, AUDIO_CUE_TYPE_SHOW_OUTRO),
                 max_per_zone=AUDIO_CUE_XEP_MAX_PER_ZONE,
                 target_fingerprint=target_fp)
         except Exception:
@@ -890,7 +902,10 @@ def _run_cue_candidate_scan(podcast_id, episode_id, slug, audio_path,
 # Bumped when the candidate set's meaning changes so old caches are rescanned.
 # 2: the within-episode speech filter (#350 4A) -- a 2.28.0 cache can still hold
 # speech-like recurring candidates the filter now drops, so force a rescan.
-CUE_CANDIDATE_SCHEMA_VERSION = 2
+# 3: per-zone intro/outro caps (#350 Phase 3) -- old caches used a shared
+#    AUDIO_CUE_XEP_MAX_DURATION=30s cap for both zones; the new per-DB-setting
+#    caps may produce longer suggestions, so old caches are stale.
+CUE_CANDIDATE_SCHEMA_VERSION = 3
 
 
 def _candidates_are_current(candidates):

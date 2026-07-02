@@ -203,6 +203,26 @@ def _find_shared_segments(target, siblings, win, similarity, min_matches,
             if len(cand) < min_matches:
                 break
             alive, hi = cand, hi + step
+        # Fine-edge refinement: walk each boundary 1 subfp at a time up to
+        # (step-1) steps, testing a 4-subfp window that includes the new subfp.
+        # A 4-subfp (128-bit) window is the minimum meaningful slice at the
+        # 0.73 threshold; a 1-subfp (32-bit) slice is statistically noise.
+        fine_win = min(4, win)
+        fine_limit = max(1, step - 1)
+        for _ in range(fine_limit):
+            if lo - 1 < claimed_until or (hi - (lo - 1)) > max_len:
+                break
+            cand = _slice_ok(alive, lo - fine_win, fine_win)
+            if len(cand) < min_matches:
+                break
+            alive, lo = cand, lo - 1
+        for _ in range(fine_limit):
+            if hi + fine_win > len(target) or (hi + 1 - lo) > max_len:
+                break
+            cand = _slice_ok(alive, hi, fine_win)
+            if len(cand) < min_matches:
+                break
+            alive, hi = cand, hi + 1
         if len(alive) >= min_matches and (hi - lo) >= min_len:
             found.append((lo, hi, len(alive)))
             seg_end = hi
@@ -641,7 +661,8 @@ class AudioFingerprinter:
     def discover_cross_episode_cues(self, target_path, sibling_paths, *,
                                     head_seconds, tail_seconds, window_seconds,
                                     similarity, min_matches, min_duration,
-                                    max_duration, max_per_zone, target_fingerprint=None):
+                                    intro_max_duration, outro_max_duration,
+                                    max_per_zone, target_fingerprint=None):
         """Find intro/outro cues by comparing this episode's head and tail
         fingerprint against recent completed sibling episodes.
 
@@ -670,7 +691,8 @@ class AudioFingerprinter:
         fps = len(t_ints) / t_dur
         win = max(4, int(round(window_seconds * fps)))
         min_len = max(win, int(round(min_duration * fps)))
-        max_len = max(min_len, int(round(max_duration * fps)))
+        intro_max_len = max(min_len, int(round(intro_max_duration * fps)))
+        outro_max_len = max(min_len, int(round(outro_max_duration * fps)))
 
         # Head and tail zones are split at the episode midpoint so they never
         # overlap, even on short episodes -- otherwise one shared segment would be
@@ -688,7 +710,7 @@ class AudioFingerprinter:
         out = []
         intros = _find_shared_segments(
             _head(t_ints, t_dur), [_head(s, d) for s, d in sib_fps],
-            win, similarity, min_matches, min_len, max_len)
+            win, similarity, min_matches, min_len, intro_max_len)
         for a, b, count in intros[:max_per_zone]:
             out.append({'start': round(a / fps, 2), 'end': round(b / fps, 2),
                         'kind': 'intro', 'episodeMatches': count})
@@ -697,7 +719,7 @@ class AudioFingerprinter:
         tail_offset = (len(t_ints) - len(t_tail)) / fps
         outros = _find_shared_segments(
             t_tail, [_tail(s, d) for s, d in sib_fps],
-            win, similarity, min_matches, min_len, max_len)
+            win, similarity, min_matches, min_len, outro_max_len)
         # Keep the runs nearest the episode end -- the true sign-off outro is the
         # last tail run, not the earliest. (Guard the -0 slice: outros[-0:] is the
         # whole list, which would ignore a max_per_zone of 0.)

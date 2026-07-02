@@ -113,3 +113,56 @@ def test_backward_walk_recovers_onset():
                                  min_matches=2, min_len=24, max_len=400)
     assert len(segs) == 1
     assert abs(segs[0][0] - 24) <= WIN // 2  # onset recovered, not the mid probe
+
+
+def test_fine_edge_recovery_sub_step():
+    # After coarse grow, a 1-subfp refinement step must recover the true edge
+    # when the segment boundary falls mid-coarse-step.
+    # The seg is planted at offset 35 (not a multiple of step=8), so the true
+    # lo boundary (35) and hi boundary (35+40=75) both fall off the coarse grid,
+    # forcing the fine refinement path to exercise both edges.
+    rng = np.random.default_rng(7)
+    step = 8
+    win = 16
+    seg = _rand(40, rng)  # shared segment of 40 subfps
+    # Plant seg in target at position 35 (off the step=8 coarse grid).
+    target = np.concatenate([_rand(35, rng), seg, _rand(35, rng)])
+    sib1 = np.concatenate([_rand(10, rng), seg, _rand(10, rng)])
+    sib2 = np.concatenate([_rand(20, rng), seg, _rand(20, rng)])
+    segs = _find_shared_segments(target, [sib1, sib2], win=win,
+                                 step=step, similarity=0.73,
+                                 min_matches=2, min_len=win, max_len=400)
+    assert len(segs) == 1
+    # Both edges must be recovered within 4 subfps (half a step) of true boundaries.
+    assert abs(segs[0][0] - 35) <= 4       # lo-edge fine refinement
+    assert abs(segs[0][1] - (35 + 40)) <= 4  # hi-edge fine refinement
+
+
+def test_max_len_per_zone_bound():
+    # max_len caps the returned segment length; passing max_len=32 on a
+    # 80-subfp segment should yield a result with (end-start) <= 32.
+    rng = np.random.default_rng(8)
+    seg = _rand(80, rng)
+    target = np.concatenate([_rand(16, rng), seg, _rand(16, rng)])
+    sib1 = np.concatenate([_rand(8, rng), seg, _rand(8, rng)])
+    sib2 = np.concatenate([_rand(24, rng), seg, _rand(24, rng)])
+    segs = _find_shared_segments(target, [sib1, sib2], win=16,
+                                 step=8, similarity=0.73,
+                                 min_matches=2, min_len=16, max_len=32)
+    assert len(segs) == 1
+    assert (segs[0][1] - segs[0][0]) <= 32
+
+
+def test_claimed_run_does_not_cross_into_prior():
+    # A new candidate that starts inside a previously claimed run must not be
+    # emitted (no overlapping duplicates).
+    rng = np.random.default_rng(9)
+    seg = _rand(48, rng)
+    target = np.concatenate([_rand(8, rng), seg, _rand(100, rng)])
+    sib1 = np.concatenate([_rand(4, rng), seg, _rand(50, rng)])
+    sib2 = np.concatenate([_rand(16, rng), seg, _rand(50, rng)])
+    segs = _find_shared_segments(target, [sib1, sib2], win=16,
+                                 step=8, similarity=0.73,
+                                 min_matches=2, min_len=16, max_len=400)
+    assert len(segs) == 1  # only one result, no overlapping duplicate
+    assert segs[0][0] >= 0 and segs[0][1] <= 8 + 48 + 8  # within plausible range
