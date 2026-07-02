@@ -11,6 +11,7 @@ import typer
 
 from audio_analysis.cue_features import deserialize_mfcc
 
+from . import cross_episode_eval as xep_mod
 from . import feeds as feeds_mod
 from . import report as report_mod
 from . import scan_eval as scan_eval_mod
@@ -129,6 +130,9 @@ def scan(
     ),
     max_episodes: int = typer.Option(5, "--max-episodes"),
     output_dir: Optional[Path] = typer.Option(None, "--output-dir"),
+    cross_episode: bool = typer.Option(False, "--cross-episode", help="Run cross-episode intro/outro discovery"),
+    intro_max: float = typer.Option(60.0, "--intro-max", help="Max intro duration (seconds)"),
+    outro_max: float = typer.Option(60.0, "--outro-max", help="Max outro duration (seconds)"),
 ) -> None:
     """Run Chromaprint discovery eval against sweep ground truth."""
     _setup_logging()
@@ -137,13 +141,22 @@ def scan(
     sweep_result = sweep_mod.run(rows, paths)
     template_durations = {str(r["id"]): r["duration_s"] for r in rows}
     scan_result = scan_eval_mod.run(paths, sweep_result["per_template"], template_durations)
+    xep_result = (
+        xep_mod.run(paths, intro_max_duration=intro_max, outro_max_duration=outro_max)
+        if cross_episode
+        else None
+    )
     md_path, json_path = report_mod.write(
-        sweep_result, scan_result=scan_result, output_dir=output_dir
+        sweep_result, scan_result=scan_result, xep_result=xep_result, output_dir=output_dir
     )
     typer.echo(f"report: {md_path}")
     typer.echo(f"json:   {json_path}")
     if not scan_result.get("available"):
         typer.echo(f"scan skipped: {scan_result.get('skip_reason')}")
+    if xep_result is not None and not xep_result.get("available"):
+        typer.echo(f"cross-episode skipped: {xep_result.get('skip_reason')}")
+    elif xep_result is not None and xep_result.get("skip_reason"):
+        typer.echo(f"cross-episode skipped: {xep_result.get('skip_reason')}")
 
 
 @app.command()
@@ -183,6 +196,7 @@ def report(
     md_path, _ = report_mod.write(
         payload["sweep"],
         scan_result=payload.get("scan_eval"),
+        xep_result=payload.get("cross_episode"),
         output_dir=output_dir,
     )
     typer.echo(f"report written: {md_path}")

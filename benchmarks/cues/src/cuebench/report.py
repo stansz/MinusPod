@@ -13,6 +13,7 @@ _RESULTS_DIR = Path(__file__).resolve().parents[2] / "results"
 def write(
     sweep_result: Dict[str, Any],
     scan_result: Optional[Dict[str, Any]] = None,
+    xep_result: Optional[Dict[str, Any]] = None,
     output_dir: Optional[Path] = None,
 ) -> tuple[Path, Path]:
     """Serialize results to report.md and report.json.
@@ -29,15 +30,20 @@ def write(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "sweep": sweep_result,
         "scan_eval": scan_result,
+        "cross_episode": xep_result,
     }
 
     json_path.write_text(json.dumps(payload, indent=2))
-    md_path.write_text(_render_md(sweep_result, scan_result))
+    md_path.write_text(_render_md(sweep_result, scan_result, xep_result))
 
     return md_path, json_path
 
 
-def _render_md(sweep: Dict[str, Any], scan: Optional[Dict[str, Any]]) -> str:
+def _render_md(
+    sweep: Dict[str, Any],
+    scan: Optional[Dict[str, Any]],
+    xep: Optional[Dict[str, Any]] = None,
+) -> str:
     lines = [
         "# cuebench report",
         "",
@@ -176,6 +182,51 @@ def _render_md(sweep: Dict[str, Any], scan: Optional[Dict[str, Any]]) -> str:
                             lines.append(
                                 f"| {ep_name} | {label} | {found} | {rank}"
                                 f" | {span_acc} | {matched}/{gt_count} | {cands} |"
+                            )
+                lines.append("")
+
+    # Cross-episode intro/outro
+    if xep is not None:
+        lines.append("## Cross-episode intro/outro")
+        lines.append("")
+        if not xep.get("available") or xep.get("skip_reason"):
+            reason = xep.get("skip_reason", "unavailable")
+            lines.append(f"Skipped: {reason}")
+            lines.append("")
+        else:
+            summary = xep.get("summary", {})
+            n_total = summary.get("episodes_total", 0)
+            intro_found = summary.get("intro_found", 0)
+            outro_found = summary.get("outro_found", 0)
+            lines.append(f"Intro found: {intro_found}/{n_total} episodes")
+            lines.append(f"Outro found: {outro_found}/{n_total} episodes")
+            lines.append("")
+            # Span stats
+            for zone in ("intro", "outro"):
+                for edge in ("start", "end"):
+                    key = f"{zone}_{edge}_span"
+                    stats = summary.get(key, {})
+                    if stats:
+                        lines.append(
+                            f"{zone} {edge}: min={stats['min']}s"
+                            f" max={stats['max']}s mean={stats['mean']}s"
+                        )
+            lines.append("")
+            # Per-episode table
+            ep_list = xep.get("episodes", [])
+            if ep_list:
+                lines.append("| Episode | kind | start | end | duration |")
+                lines.append("|---------|------|-------|-----|----------|")
+                for ep in ep_list:
+                    ep_name = Path(ep.get("episode", "")).name or ep.get("episode", "")
+                    candidates = ep.get("candidates", [])
+                    if not candidates:
+                        lines.append(f"| {ep_name} | - | - | - | - |")
+                    else:
+                        for c in candidates:
+                            lines.append(
+                                f"| {ep_name} | {c['kind']} | {c['start']}"
+                                f" | {c['end']} | {c['duration']} |"
                             )
                 lines.append("")
 
