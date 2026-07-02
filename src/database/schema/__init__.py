@@ -1419,8 +1419,10 @@ class SchemaMixin:
                     end_s REAL NOT NULL,
                     match_score REAL,
                     confidence REAL,
-                    outcome TEXT NOT NULL DEFAULT 'none' CHECK(outcome IN ('snap', 'pair', 'none')),
+                    outcome TEXT NOT NULL DEFAULT 'none',
                     verdict TEXT NOT NULL DEFAULT 'pending' CHECK(verdict IN ('pending', 'confirmed', 'rejected')),
+                    edge_distance_s REAL,
+                    unused_reason TEXT,
                     created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                     FOREIGN KEY (podcast_id) REFERENCES podcasts(id) ON DELETE CASCADE
                 )

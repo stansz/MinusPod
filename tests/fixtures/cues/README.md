@@ -12,14 +12,14 @@ wsj_content_transition.flac
   Format: 16 kHz mono s16 FLAC, ~2.82 s.
   Origin: Uploaded as a ZIP attachment by user "apparle" on 2026-06-29 in
           GitHub issue https://github.com/ttlequals0/MinusPod/issues/350.
-  RSS: https://video.feeds.cbsnews.com/VfR87OaLpPaJq4qH/rss
+  RSS: https://video-api.wsj.com/podcast/rss/wsj/the-journal
 
 pivot_content_transition.flac
   Source: Pivot podcast content-transition sting.
   Format: 16 kHz mono s16 FLAC, ~2.30 s.
   Origin: Uploaded as a ZIP attachment by user "apparle" on 2026-07-01 in
           GitHub issue https://github.com/ttlequals0/MinusPod/issues/350.
-  RSS: https://feeds.simplecast.com/l2i9YnTd
+  RSS: https://feeds.megaphone.fm/pivot
 
 Provenance
 ----------

@@ -25,8 +25,8 @@ MIN_SIGNAL_CONFIDENCE = 0.80
 
 # Maximum spectral ad-role cues to include per window (keeps prompt size bounded
 # on music-heavy episodes). Template cues are never capped. When more spectral
-# cues exist the top N by (confidence, recency) are kept in chronological order
-# and a note is appended.
+# cues exist the top N by (confidence, start ascending) are kept in chronological
+# order and a note is appended.
 SPECTRAL_CUE_MAX_PER_WINDOW = 5
 
 

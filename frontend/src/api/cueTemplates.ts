@@ -257,8 +257,10 @@ export function cueCandidateLabel(c: CueCandidate): string {
   if (c.kind === 'intro') return `Intro (in ${c.episodeMatches ?? '?'} eps)`;
   if (c.kind === 'outro') return `Outro (in ${c.episodeMatches ?? '?'} eps)`;
   if (c.kind === 'recurring' && c.boundaryAffinity != null && c.adBoundaryHits != null) {
-    const sibling = c.affinitySource === 'siblings' ? ' (from recent episodes)' : '';
-    return `Repeats ${c.count ?? '?'}x -- ${c.adBoundaryHits} of ${c.count ?? '?'} at known ad breaks${sibling}`;
+    if (c.affinitySource === 'siblings') {
+      return `Repeats ${c.count ?? '?'}x -- ${Math.round(c.boundaryAffinity * 100)}% at known ad breaks (recent episodes)`;
+    }
+    return `Repeats ${c.count ?? '?'}x -- ${c.adBoundaryHits} of ${c.count ?? '?'} at known ad breaks`;
   }
   return `Repeats ${c.count ?? '?'}x`;
 }

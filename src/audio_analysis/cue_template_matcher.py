@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 from scipy.signal import fftconvolve
@@ -81,7 +81,7 @@ class AudioCueTemplateMatcher:
         formant_atten_db: float = 0.0,
         formant_lo_hz: float = FORMANT_LO_HZ,
         formant_hi_hz: float = FORMANT_HI_HZ,
-        near_miss_floor: float = None,
+        near_miss_floor: Optional[float] = None,
     ):
         self.score_threshold = score_threshold
         self.max_matches_per_template = max_matches_per_template

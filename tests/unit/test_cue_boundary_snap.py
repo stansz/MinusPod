@@ -17,6 +17,7 @@ from ad_detector.cue_boundary_snap import (
     _pick_cue_for_end,
 )
 from audio_analysis.base import AudioAnalysisResult, AudioSegmentSignal
+from main_app import processing
 
 
 def _result_with(*signals):
@@ -312,8 +313,6 @@ def test_settings_plumbing_snap_receives_db_values():
     processing.py stops reading or forwarding the DB values the mock assertion
     will fail.
     """
-    from main_app import processing
-
     db_lead = 8.0
     db_lag = 3.5
 
