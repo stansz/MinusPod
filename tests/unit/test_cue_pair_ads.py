@@ -200,3 +200,70 @@ def test_fraction_guard_disabled_by_zero_total_duration():
     # total_duration=0 (unknown) leaves only the absolute cap in force.
     result = _result_with(_cue(100.0, 100.5), _cue(220.0, 220.5))
     assert len(synthesize_ads_from_cue_pairs([], result, total_duration=0.0)) == 1
+
+
+# ---------------------------------------------------------------------------
+# LLM-ad-edge orientation (boundary cues demoted to opener/closer by phase)
+# ---------------------------------------------------------------------------
+
+def _ad(start, end):
+    return {'start': start, 'end': end}
+
+
+def test_orientation_kills_content_phantom_on_exit_first_feed():
+    # apparle's shape: opening ad, then exit cue, then detected break1
+    # (entry+exit cues), then detected break2. Without orientation the leading
+    # exit cue pairs with break1's entry cue over CONTENT -> phantom.
+    result = _result_with(
+        _cue(100.0, 100.5),   # C0 exit (content resumes after opening ad)
+        _cue(300.0, 300.5),   # C1 entry of break1
+        _cue(360.0, 360.5),   # C2 exit of break1
+        _cue(600.0, 600.5),   # C3 entry of break2
+        _cue(660.0, 660.5),   # C4 exit of break2
+    )
+    llm_ads = [_ad(0.0, 90.0), _ad(310.0, 358.0), _ad(610.0, 658.0)]
+
+    # Orientation OFF: leading exit cue opens a pair over content -> phantom(s).
+    off = synthesize_ads_from_cue_pairs(list(llm_ads), result, orient_window_s=0.0)
+    synth_off = [a for a in off if a.get('detection_stage') == 'cue_pair']
+    assert len(synth_off) >= 1
+
+    # Orientation ON (default): no cue-pair ad is synthesized over content; the
+    # real breaks are already covered by the LLM ads.
+    on = synthesize_ads_from_cue_pairs(list(llm_ads), result)
+    synth_on = [a for a in on if a.get('detection_stage') == 'cue_pair']
+    assert synth_on == []
+
+
+def test_orientation_preserves_a_genuinely_missed_break():
+    # Two cues bracket a MISSED break with no nearby LLM ad. Orientation is
+    # active (an unrelated far-away LLM ad exists) but must not suppress it.
+    result = _result_with(_cue(300.0, 300.5), _cue(360.0, 360.5))
+    llm_ads = [_ad(1000.0, 1100.0)]
+    ads = synthesize_ads_from_cue_pairs(llm_ads, result)
+    synth = [a for a in ads if a.get('detection_stage') == 'cue_pair']
+    assert len(synth) == 1
+    assert synth[0]['start'] == 300.55 and synth[0]['end'] == 359.95
+
+
+def test_orientation_noop_without_llm_ads():
+    result = _result_with(_cue(100.0, 100.5), _cue(220.0, 220.5))
+    ads = synthesize_ads_from_cue_pairs([], result)
+    assert len(ads) == 1  # greedy fallback unchanged when there are no LLM ads
+
+
+def test_orientation_only_demotes_leading_exit_not_mid_episode():
+    from ad_detector.cue_pair_ads import _orient_cues, _Cue
+
+    def C(start):
+        return _Cue(start=start, end=start + 0.5, confidence=0.9,
+                    label='x', template_id=1, role='boundary')
+
+    c0, c1, ca, cb = C(100), C(300), C(500), C(560)
+    cues = [c0, c1, ca, cb]
+    ads = [{'start': 0, 'end': 90}, {'start': 305, 'end': 360}, {'start': 800, 'end': 860}]
+    _orient_cues(cues, ads, 20.0)
+    assert c0.effective_role == 'end'       # leading exit demoted (phantom guard)
+    assert c1.effective_role == 'boundary'  # entry-side demotion removed
+    assert ca.effective_role == 'boundary'  # mid-episode cue never demoted
+    assert cb.effective_role == 'boundary'

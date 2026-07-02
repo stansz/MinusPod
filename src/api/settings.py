@@ -121,6 +121,7 @@ def get_settings():
         AUDIO_CUE_CAPTURE_MAX_INTRO_SECONDS, AUDIO_CUE_CAPTURE_MAX_OUTRO_SECONDS,
         AUDIO_CUE_PAIR_CONFIDENCE, AUDIO_CUE_PAIR_MIN_BREAK_SECONDS,
         AUDIO_CUE_PAIR_MAX_BREAK_SECONDS, AUDIO_CUE_PAIR_MAX_BREAK_FRACTION,
+        AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS,
     )
     from chapters_generator import CHAPTERS_MODEL
     settings = _settings_view(db.get_all_settings())
@@ -345,6 +346,7 @@ def get_settings():
     audio_cue_pair_min_break = _cue_num('audio_cue_pair_min_break_seconds', AUDIO_CUE_PAIR_MIN_BREAK_SECONDS)
     audio_cue_pair_max_break = _cue_num('audio_cue_pair_max_break_seconds', AUDIO_CUE_PAIR_MAX_BREAK_SECONDS)
     audio_cue_pair_max_break_fraction = _cue_num('audio_cue_pair_max_break_fraction', AUDIO_CUE_PAIR_MAX_BREAK_FRACTION)
+    audio_cue_pair_orient_window = _cue_num('audio_cue_pair_orient_window_seconds', AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS)
 
     return json_response({
         'systemPrompt': _sv('system_prompt', _setting_value(settings, 'system_prompt', DEFAULT_SYSTEM_PROMPT) or DEFAULT_SYSTEM_PROMPT),
@@ -403,6 +405,7 @@ def get_settings():
         'audioCuePairMinBreakSeconds': _sv('audio_cue_pair_min_break_seconds', audio_cue_pair_min_break),
         'audioCuePairMaxBreakSeconds': _sv('audio_cue_pair_max_break_seconds', audio_cue_pair_max_break),
         'audioCuePairMaxBreakFraction': _sv('audio_cue_pair_max_break_fraction', audio_cue_pair_max_break_fraction),
+        'audioCuePairOrientWindowSeconds': _sv('audio_cue_pair_orient_window_seconds', audio_cue_pair_orient_window),
         'positionalPriorEnabled': _sv('positional_prior_enabled', positional_prior_enabled),
         'audioBitrate': _sv('audio_bitrate', audio_bitrate),
         'audioNormalizeEnabled': _sv('audio_normalize_enabled', audio_normalize_enabled),
@@ -989,6 +992,7 @@ def _apply_audio_cue_fields(db, data):
         ('audioCuePairMinBreakSeconds', 'audio_cue_pair_min_break_seconds', 1.0, 600.0),
         ('audioCuePairMaxBreakSeconds', 'audio_cue_pair_max_break_seconds', 1.0, 3600.0),
         ('audioCuePairMaxBreakFraction', 'audio_cue_pair_max_break_fraction', 0.0, 1.0),
+        ('audioCuePairOrientWindowSeconds', 'audio_cue_pair_orient_window_seconds', 0.0, 120.0),
     ):
         if field_name not in data:
             continue
@@ -1229,6 +1233,7 @@ def reset_ad_detection_settings():
     db.reset_setting('audio_cue_pair_min_break_seconds')
     db.reset_setting('audio_cue_pair_max_break_seconds')
     db.reset_setting('audio_cue_pair_max_break_fraction')
+    db.reset_setting('audio_cue_pair_orient_window_seconds')
 
     # Per-stage LLM tunables (temperature, max tokens, reasoning, Ollama context
     # window, detection-window geometry). reset_setting clears each row so

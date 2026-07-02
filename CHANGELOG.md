@@ -6,6 +6,86 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.31.7] - 2026-07-02
+
+### Changed
+
+- On a wide screen the transport controls and the selection readout share one row instead of stacking, so the editor is not three lines tall. On mobile they still stack.
+
+### Fixed
+
+- The playback-speed picker closes on Escape without also closing the editor, dismisses on a touch outside it, and no longer advertises listbox semantics it did not implement.
+
+## [2.31.6] - 2026-07-02
+
+### Changed
+
+- The play-selection control shows its bracketed play glyph again ([ play ]) to read as "play the selection," matching the original design.
+
+## [2.31.5] - 2026-07-02
+
+### Changed
+
+- The transport bar is a compact pill centered in the editor instead of a full-width box, and the speed control is grouped next to the transport buttons instead of sitting at the far edge on a wide screen.
+
+## [2.31.4] - 2026-07-02
+
+### Changed
+
+- The playback speed control is a custom button with a small popover instead of a native dropdown. Native dropdowns render at their own size on iOS, so the control was oversized on iPhone; the custom button matches the transport buttons on every platform.
+
+## [2.31.3] - 2026-07-01
+
+### Changed
+
+- The transport controls use a three-column layout: the transport cluster is centered and the playback speed control sits in its own column on the right, so it is on the same line without overlapping the Stop button.
+
+## [2.31.2] - 2026-07-01
+
+### Changed
+
+- The playback speed control moved onto the transport row instead of dropping to its own line on a narrow screen.
+
+## [2.31.1] - 2026-07-01
+
+### Changed
+
+- The cue editor's play-selection control is now a compact icon-only amber button, and the time readout is centered under the controls. The amber shifts a shade darker in light mode for contrast.
+- The Add/Edit ad editor can now audition its selection: the same play-selection control plays only the marked ad span (start to end), matching the cue editor. Scrubbing, dragging a pin, or seeking during the audition ends it, so it never pauses playback you start afterward.
+
+## [2.31.0] - 2026-07-01
+
+### Added
+
+- The cue editor's "Play selection" control is now a bracketed play icon in the
+  main transport row, so it is easy to find. It plays only the bracketed
+  selection (#350).
+- Saved cues on a feed's Audio Cue Templates list now have a Play button so you
+  can hear each one without exporting it. One cue plays at a time.
+- New "Suggest threshold" tool on a feed's cue test panel: it sweeps a sample
+  of episodes and proposes a global cue match threshold from the gap between
+  noise and real matches. The tool notes that a cue below 0.80 confidence will
+  not change cuts. The default match threshold stays 0.75 (#350).
+
+### Changed
+
+- Content-transition cues are now described to the ad reviewer as a
+  maybe-boundary transition instead of being grouped with the show's intro or
+  outro, so a jingle reused around ad breaks is no longer treated as
+  never-a-boundary (#350).
+- Cue-pair ad synthesis no longer invents an ad over show content on feeds
+  whose single cue brackets both ends of a break with an unbracketed opening
+  ad. Each cue is now oriented from the first-pass ad edges and paired on the
+  right phase (#350).
+
+### API
+
+- `GET /api/v1/cue-templates/{templateId}/audio` -- streams the template's raw
+  audio as `audio/wav` (404 unknown, 422 no audio stored).
+- `POST /api/v1/feeds/{slug}/cue-threshold-suggest` -- runs a threshold sweep
+  and returns `{episodeId, status, suggestion?, sampleEpisodes?, floorUsed?,
+  perTemplate?, error?}`.
+
 ## [2.30.0] - 2026-07-01
 
 A codebase-wide audit. Alongside the #449 fix it corrects a set of latent bugs

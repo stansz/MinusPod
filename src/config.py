@@ -215,6 +215,11 @@ AUDIO_CUE_PAIR_MAX_BREAK_SECONDS = 480.0  # Longest plausible cue-pair break
 # absolute MAX_BREAK_SECONDS cap would pass it. On a 6-minute episode the 480s
 # absolute cap never bites; this does.
 AUDIO_CUE_PAIR_MAX_BREAK_FRACTION = 0.5
+# Max gap (s) between an LLM ad edge and a boundary-role template cue for that
+# cue to be oriented as an ad entry or exit before cue-pair synthesis. Must
+# exceed the teaser gap between an opening ad's end and the first content cue.
+# 0 disables orientation (reverts to greedy left-to-right pairing).
+AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS = 20.0
 # Cue-candidate recurrence (episode-page "find candidates" scan). A real cue
 # repeats; a one-off sound does not. The scan generates one Chromaprint
 # fingerprint of the whole episode and finds windows that recur at least
@@ -282,6 +287,20 @@ AUDIO_CUE_SCAN_MAX_DURATION_SECONDS = 12.0  # allow sustained musical beds (live
 # runs in a background thread and the result is cached. A scan row older than
 # this is treated as crashed/expired and reclaimable for a fresh run.
 AUDIO_CUE_CANDIDATE_SCAN_STALE_SECONDS = 900
+
+# Threshold auto-suggest (#350). The diagnostic sweep runs the matcher at a low
+# floor across a few episodes; the helper gap-finds between the noise cluster and
+# the signal cluster and proposes a global match-score value.
+AUDIO_CUE_SUGGEST_FLOOR = 0.35          # sweep score floor (below the ~0.5 noise ceiling)
+AUDIO_CUE_SUGGEST_MAX_EPISODES = 5      # picked episode + recent siblings to sweep
+AUDIO_CUE_SUGGEST_MIN_GAP = 0.08        # smallest empty band that counts as clean separation
+AUDIO_CUE_SUGGEST_MIN_SIGNAL = 3        # occurrences above the gap needed to trust the signal cluster
+AUDIO_CUE_SUGGEST_BAND = (0.40, 0.95)   # suggested value must fall in this band
+AUDIO_CUE_SUGGEST_MARGIN = 0.02         # keep the suggestion off both cluster edges
+# The confidence a cue must reach to affect anything downstream (LLM prompt
+# floor, hardcoded). Snap/pair use their own DB-settable floors; this is a
+# display/annotation mirror only -- do NOT rewire audio_enforcer from it here.
+AUDIO_CUE_EFFECT_FLOOR = 0.80
 
 # Keep-content (whitelist) detection mode -- OPT-IN per feed, default blacklist.
 # In this mode the LLM labels substantive show content and we remove the
@@ -377,6 +396,8 @@ def audio_cue_type_role(cue_type):
 # the default type's role.
 AUDIO_CUE_ROLE_DEFAULT = audio_cue_type_role(AUDIO_CUE_TYPE_DEFAULT)  # 'boundary'
 AUDIO_CUE_ROLE_NON_AD = 'non_ad'  # intro/outro: never snaps or pairs
+AUDIO_CUE_ROLE_START = 'start'   # opener-only (ad entry): opens a cue pair
+AUDIO_CUE_ROLE_END = 'end'       # closer-only (ad exit): closes a cue pair
 # Cue signal source: a precise template match vs the coarse spectral fallback.
 # Only template cues may create ads or move ad edges; spectral cues are
 # LLM-prompt evidence only. Centralized so the gate is never re-typed.

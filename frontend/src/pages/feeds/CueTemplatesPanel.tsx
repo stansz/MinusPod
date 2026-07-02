@@ -1,26 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { X, Play, Square } from 'lucide-react';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import CueMarkModal from '../../components/CueMarkModal';
 import {
   CUE_TYPE_OPTIONS,
+  cueTemplateAudioUrl,
   cueTemplateExportUrl,
   deleteCueTemplate,
   importCueTemplate,
   listCueTemplates,
   previewCueTemplate,
   scanEpisodeCues,
+  suggestCueThreshold,
   updateCueTemplate,
   type CueScanResponse,
   type CueTemplate,
   type CueTemplateScope,
   type CueTemplateType,
+  type ThresholdSuggestResponse,
 } from '../../api/cueTemplates';
 import { getCueFeedAdvisory } from '../../api/cueDetections';
 import { getEpisode, getEpisodes, getFeed, getFeeds } from '../../api/feeds';
-import { getSettings } from '../../api/settings';
+import { getSettings, updateSettings } from '../../api/settings';
 import type { Feed } from '../../api/types';
 import type { Episode } from '../../api/types';
 import { formatTime } from '../../utils/adReviewHelpers';
@@ -65,6 +68,20 @@ function CueTemplatesPanel({ slug }: Props) {
   const [verifying, setVerifying] = useState(false);
   const [promoteState, setPromoteState] = useState<{ template: CueTemplate; feeds: Feed[] } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingId, setPlayingId] = useState<number | null>(null);
+
+  const togglePlay = (t: CueTemplate) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playingId === t.id) {
+      audio.pause();
+      setPlayingId(null);
+      return;
+    }
+    audio.src = cueTemplateAudioUrl(t.id);
+    audio.play().then(() => setPlayingId(t.id)).catch(() => setPlayingId(null));
+  };
 
   const templatesQuery = useQuery({
     queryKey: ['cue-templates', slug],
@@ -242,6 +259,7 @@ function CueTemplatesPanel({ slug }: Props) {
           className="hidden"
           onChange={handleImportFile}
         />
+        <audio ref={audioRef} onEnded={() => setPlayingId(null)} className="hidden" />
         <div className="flex flex-wrap gap-2 mb-3">
           <button
             type="button"
@@ -348,6 +366,18 @@ function CueTemplatesPanel({ slug }: Props) {
                 </div>
                 {editingId !== t.id && (
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-7 sm:pl-0 sm:shrink-0">
+                    {t.hasAudio !== false && (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => togglePlay(t)}
+                        title={playingId === t.id ? 'Stop' : 'Play this cue'}
+                        aria-label={playingId === t.id ? `Stop cue ${t.label}` : `Play cue ${t.label}`}
+                      >
+                        {playingId === t.id ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                        {playingId === t.id ? 'Stop' : 'Play'}
+                      </button>
+                    )}
                     <a
                       className="text-xs text-muted-foreground hover:text-foreground"
                       href={cueTemplateExportUrl(t.id)}
@@ -623,12 +653,18 @@ interface CueScanModalProps {
 // times per template. No DB writes; pure diagnostic.
 function CueScanModal({ slug, onClose }: CueScanModalProps) {
   useEscape(onClose);
+  const queryClient = useQueryClient();
   const [picking, setPicking] = useState(true);
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
   const [scoreOverride, setScoreOverride] = useState<string>('');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CueScanResponse | null>(null);
+  const [suggestion, setSuggestion] = useState<ThresholdSuggestResponse | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const activeRef = useRef(true);
+  useEffect(() => () => { activeRef.current = false; }, []);
 
   const runScan = async (ep: Episode, override?: number) => {
     setRunning(true);
@@ -641,6 +677,47 @@ function CueScanModal({ slug, onClose }: CueScanModalProps) {
       setError(e instanceof Error ? e.message : 'Scan failed');
     } finally {
       setRunning(false);
+    }
+  };
+
+  const runSuggest = async () => {
+    if (!selectedEpisode) return;
+    setSuggesting(true);
+    setSuggestion(null);
+    setApplied(false);
+    try {
+      for (let i = 0; i < 180; i++) {
+        const res = await suggestCueThreshold(slug, selectedEpisode.id, i === 0);
+        if (!activeRef.current) return;
+        if (res.status === 'error') {
+          setError(res.error || 'Threshold suggest failed');
+          return;
+        }
+        if (res.status === 'ready') {
+          setSuggestion(res);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      setError('Threshold suggest timed out after 3 minutes');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Suggest failed');
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  const applySuggested = async (value: number) => {
+    setApplied(false);
+    if (!window.confirm(
+      `Set the global cue match threshold to ${value.toFixed(2)}? This affects every feed with cue templates.`,
+    )) return;
+    try {
+      await updateSettings({ audioCueTemplateScore: value });
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      setApplied(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not apply');
     }
   };
 
@@ -718,14 +795,61 @@ function CueScanModal({ slug, onClose }: CueScanModalProps) {
           <button
             type="button"
             className={`px-3 py-1.5 rounded ${ghostBtn} text-sm`}
-            onClick={() => { setPicking(true); setResult(null); setSelectedEpisode(null); }}
+            onClick={() => { setPicking(true); setResult(null); setSelectedEpisode(null); setSuggestion(null); }}
           >
             Pick different episode
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1.5 rounded ${ghostBtn} text-sm`}
+            onClick={runSuggest}
+            disabled={suggesting}
+          >
+            {suggesting ? 'Suggesting...' : 'Suggest threshold'}
           </button>
         </div>
 
         {error && <p className="text-sm text-destructive mb-3">{error}</p>}
         {running && <LoadingSpinner size="sm" className="my-3" />}
+
+        {suggestion?.suggestion && (() => {
+          const s = suggestion.suggestion;
+          const canApply = s.confidence !== 'low'
+            && s.effectFloorWarning !== 'signal-below-floor';
+          return (
+            <div className="mb-3 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-sm">
+              {s.suggested != null ? (
+                <p className="font-mono">
+                  noise {s.noiseCeiling?.toFixed(3)} / signal {s.signalFloor?.toFixed(3)}
+                  {' '}(gap {s.gapWidth?.toFixed(3)}) across {suggestion.sampleEpisodes ?? '--'} episode(s)
+                  {' -> suggested '}<span className="font-semibold">{s.suggested.toFixed(2)}</span>
+                </p>
+              ) : (
+                <p className="text-muted-foreground">{s.reason}</p>
+              )}
+              {s.effectFloorWarning === 'signal-below-floor' && (
+                <p className="mt-1 text-amber-600 dark:text-amber-400">
+                  The real cue scores below the {s.effectFloor?.toFixed(2)} floor, so lowering the
+                  match score only surfaces it in diagnostics; it will not change cuts. Re-capture a
+                  cleaner cue or enable voiceover attenuation.
+                </p>
+              )}
+              {s.suggested != null && (
+                <button
+                  type="button"
+                  className={`mt-2 px-3 py-1.5 rounded ${ghostBtn} text-sm disabled:opacity-50`}
+                  onClick={() => applySuggested(s.suggested as number)}
+                  disabled={!canApply}
+                >
+                  Apply as global default
+                </button>
+              )}
+              {applied && (
+                <span className="ml-2 text-xs text-green-600 dark:text-green-400">Saved as global default</span>
+              )}
+            </div>
+          );
+        })()}
 
         {result && (
           <div className="space-y-3">

@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import wave
 import zipfile
 
@@ -263,7 +264,85 @@ def test_import_rejects_wrong_sample_rate(app_client, seeded):
     assert '44100' in r.get_json().get('error', '')
 
 
+# --- audio stream ---------------------------------------------------------
+
+def test_cue_template_audio_streams_inline_wav(app_client, seeded):
+    headers = _csrf(app_client)
+    tid = _seed_template(seeded['db'], seeded['slug'])
+    resp = app_client.get(f'/api/v1/cue-templates/{tid}/audio', headers=headers)
+    assert resp.status_code == 200
+    assert resp.mimetype == 'audio/wav'
+    assert 'attachment' not in (resp.headers.get('Content-Disposition') or '')
+    assert resp.data[:4] == b'RIFF'
+
+
+def test_cue_template_audio_404_for_unknown(app_client, seeded):
+    headers = _csrf(app_client)
+    resp = app_client.get('/api/v1/cue-templates/99999/audio', headers=headers)
+    assert resp.status_code == 404
+
+
+def test_list_shows_has_audio_true(app_client, seeded):
+    headers = _csrf(app_client)
+    slug = seeded['slug']
+    _seed_template(seeded['db'], slug)
+    r = app_client.get(f'/api/v1/feeds/{slug}/cue-templates', headers=headers)
+    assert r.status_code == 200
+    templates = r.get_json()['templates']
+    assert len(templates) == 1
+    assert templates[0]['hasAudio'] is True
+
+
+def test_audio_422_no_pcm_and_list_shows_false(app_client, seeded):
+    from audio_analysis.cue_features import N_COEFFS, serialize_mfcc
+    headers = _csrf(app_client)
+    db = seeded['db']
+    slug = seeded['slug']
+    pid = db.get_podcast_by_slug(slug)['id']
+    mfcc = np.zeros((5, N_COEFFS), dtype=np.float32)
+    tid = db.create_cue_template(
+        podcast_id=pid, cue_type='ad_break_boundary', source_episode_id=None,
+        source_offset_s=0.0, duration_s=0.5, sample_rate=16000, n_coeffs=N_COEFFS,
+        mfcc_blob=serialize_mfcc(mfcc), pcm_blob=None, pcm_sample_rate=None,
+    )
+    resp = app_client.get(f'/api/v1/cue-templates/{tid}/audio', headers=headers)
+    assert resp.status_code == 422
+    r = app_client.get(f'/api/v1/feeds/{slug}/cue-templates', headers=headers)
+    tpls = r.get_json()['templates']
+    match = next(t for t in tpls if t['id'] == tid)
+    assert match['hasAudio'] is False
+
+
 # --- settings validation ---------------------------------------------------
+
+def test_cue_threshold_suggest_starts_and_completes(app_client, seeded):
+    headers = _csrf(app_client)
+    slug = seeded['slug']
+    eid = seeded['episode_id']
+    _seed_template(seeded['db'], slug)  # the route 400s with no templates
+    # First call claims the slot and starts the background sweep.
+    resp = app_client.post(
+        f'/api/v1/feeds/{slug}/cue-threshold-suggest',
+        json={'episodeId': eid}, headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()['status'] in ('scanning', 'ready')
+
+    # Poll until the background thread finishes (bounded).
+    status = None
+    for _ in range(50):
+        r = app_client.post(
+            f'/api/v1/feeds/{slug}/cue-threshold-suggest',
+            json={'episodeId': eid}, headers=headers,
+        )
+        status = r.get_json()['status']
+        if status in ('ready', 'error'):
+            break
+        time.sleep(0.1)
+    assert status == 'ready'
+    body = r.get_json()
+    assert 'suggestion' in body and 'confidence' in body['suggestion']
+
 
 def test_settings_validation_for_new_keys(app_client):
     hdr = _csrf(app_client)

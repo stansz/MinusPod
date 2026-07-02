@@ -16,3 +16,13 @@ export const primaryBtn =
   'disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const ctrlBtn = `px-2 py-1.5 rounded ${ghostBtn} text-sm`;
+
+// Amber "play selection" button, matched to the amber selection region/badge.
+// Wider than the ghost icon buttons (px-2) to fit the bracketed [play] glyphs.
+export const selectionBtn =
+  'inline-flex items-center gap-0.5 px-2 py-1.5 rounded transition-colors ' +
+  'border border-amber-600/50 text-amber-600 bg-amber-500/10 ' +
+  'hover:bg-amber-500/20 hover:border-amber-600 ' +
+  'dark:border-amber-500/60 dark:text-amber-500 dark:hover:border-amber-500 ' +
+  'focus:outline-hidden focus:ring-2 focus:ring-amber-500 ' +
+  'disabled:opacity-40 disabled:cursor-not-allowed';

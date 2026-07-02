@@ -58,6 +58,9 @@ export interface CueTemplate {
   // False for a network template shared from another feed in this network;
   // such rows are read-only here and managed on the feed that created them.
   owned?: boolean;
+  // True when the template has a stored PCM blob; the play button is shown only
+  // when this is true (or absent, for templates from older servers).
+  hasAudio?: boolean;
   // Create-response only: how many times the captured cue recurs in its source
   // episode, and whether that makes it a weak (non-recurring) ad-break cue.
   // Absent on list rows.
@@ -123,6 +126,12 @@ export function cueTemplateExportUrl(templateId: number): string {
   return `/api/v1/cue-templates/${templateId}/export`;
 }
 
+// Direct URL for inline cue audio; an <audio src> hits it with the session
+// cookie (GET needs no CSRF).
+export function cueTemplateAudioUrl(templateId: number): string {
+  return `/api/v1/cue-templates/${templateId}/audio`;
+}
+
 export async function importCueTemplate(slug: string, file: File): Promise<CueTemplate> {
   const formData = new FormData();
   formData.append('file', file);
@@ -185,6 +194,38 @@ export async function scanEpisodeCues(
   return apiRequest<CueScanResponse>(
     `/feeds/${slug}/episodes/${episodeId}/cue-scan`,
     { method: 'POST', body },
+  );
+}
+
+export interface ThresholdSuggestion {
+  confidence: 'high' | 'partial' | 'low';
+  suggested: number | null;
+  reason?: string;
+  noiseCeiling?: number;
+  signalFloor?: number;
+  gapWidth?: number;
+  signalCount?: number;
+  effectFloor?: number;
+  effectFloorWarning?: 'signal-below-floor' | null;
+}
+
+export interface ThresholdSuggestResponse {
+  episodeId: string;
+  status: 'scanning' | 'ready' | 'error';
+  error?: string;
+  suggestion?: ThresholdSuggestion;
+  sampleEpisodes?: number;
+  floorUsed?: number;
+}
+
+export async function suggestCueThreshold(
+  slug: string,
+  episodeId: string,
+  rescan = false,
+): Promise<ThresholdSuggestResponse> {
+  return apiRequest<ThresholdSuggestResponse>(
+    `/feeds/${slug}/cue-threshold-suggest`,
+    { method: 'POST', body: { episodeId, rescan } },
   );
 }
 

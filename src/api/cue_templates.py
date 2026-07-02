@@ -36,6 +36,7 @@ from audio_analysis.cue_candidates import merge_cue_candidates
 from audio_analysis.cue_speech_filter import is_likely_speech
 from audio_analysis.cue_detector import AudioCueDetector
 from audio_analysis.detected_cues import build_detected_cues
+from audio_analysis.cue_threshold_suggest import suggest_cue_threshold
 from audio_fingerprinter import AudioFingerprinter
 from config import (
     AUDIO_CUE_CAPTURE_MIN_SECONDS, AUDIO_CUE_CAPTURE_MAX_SECONDS,
@@ -58,6 +59,8 @@ from config import (
     AUDIO_CUE_TYPES, AUDIO_CUE_TYPE_DEFAULT, AUDIO_CUE_TYPE_SHOW_INTRO,
     AUDIO_CUE_ROLE_NON_AD, audio_cue_type_role,
     is_template_cue,
+    AUDIO_CUE_SUGGEST_FLOOR, AUDIO_CUE_SUGGEST_MAX_EPISODES,
+    AUDIO_CUE_EFFECT_FLOOR, AUDIO_CUE_SNAP_CONFIDENCE, AUDIO_CUE_PAIR_CONFIDENCE,
 )
 from utils.constants import EpisodeStatus
 from utils.validation import is_valid_episode_id
@@ -115,6 +118,7 @@ def _template_to_meta_dict(row: dict) -> dict:
         'enabled': bool(row['enabled']),
         'createdAt': row['created_at'],
         'createdBy': row['created_by'] if 'created_by' in row.keys() else None,
+        'hasAudio': bool(row.get('pcm_blob')) or bool(row.get('has_audio')),
     }
 
 
@@ -501,6 +505,38 @@ def export_cue_template(template_id):
         mimetype='application/zip',
         as_attachment=True,
         download_name=f'cue-{template_id}-{safe_label}.zip',
+    )
+
+
+@api.route('/cue-templates/<int:template_id>/audio', methods=['GET'])
+@log_request
+def cue_template_audio(template_id):
+    """Stream a template's stored cue audio as an inline WAV for in-app playback.
+
+    Built from the retained int16 PCM blob (no ffmpeg; cues are short). Inline
+    (not an attachment) so an <audio> element can play it directly.
+    """
+    db = get_database()
+    row = db.get_cue_template(template_id)
+    if not row:
+        return error_response('template not found', 404)
+    pcm_blob = row.get('pcm_blob')
+    if not pcm_blob:
+        return error_response('this template has no raw audio to play', 422)
+    sample_rate = int(row.get('pcm_sample_rate') or SAMPLE_RATE_HZ)
+
+    wav_buf = io.BytesIO()
+    with wave.open(wav_buf, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm_blob)
+    wav_buf.seek(0)
+    return send_file(
+        wav_buf,
+        mimetype='audio/wav',
+        as_attachment=False,
+        download_name=f'cue-{template_id}.wav',
     )
 
 
@@ -949,3 +985,105 @@ def episode_cue_candidates(slug, episode_id):
         name=f'cue-candidates-{episode_id}',
     ).start()
     return json_response({'episodeId': episode_id, 'status': 'scanning', 'candidates': []})
+
+
+def _live_effect_floor(db):
+    """The lowest confidence at which a cue can affect a cut on this install:
+    the hardcoded LLM prompt floor (0.80) and the DB-settable snap floor, plus
+    the pair floor only when cue-pair synthesis is enabled."""
+    floor = AUDIO_CUE_EFFECT_FLOOR
+    floor = min(floor, db.get_setting_float('audio_cue_snap_confidence', AUDIO_CUE_SNAP_CONFIDENCE))
+    if db.get_setting_bool('audio_cue_create_from_pairs', default=False):
+        floor = min(floor, db.get_setting_float('audio_cue_pair_confidence', AUDIO_CUE_PAIR_CONFIDENCE))
+    return floor
+
+
+def _run_cue_threshold_scan(podcast_id, episode_id, slug, audio_paths,
+                            templates, formant_atten, effect_floor):
+    """Sweep every template across the given episode audio paths at a low floor,
+    gather occurrence scores, and store a suggested global threshold."""
+    db = get_database()
+    try:
+        scores = []
+        peaks = {}
+        # The matcher is stateless across episodes (audio is decoded inside
+        # detect_with_debug), so build it once instead of per episode.
+        matcher = AudioCueTemplateMatcher(
+            templates,
+            score_threshold=AUDIO_CUE_SUGGEST_FLOOR,
+            max_matches_per_template=200,
+            formant_atten_db=formant_atten,
+        )
+        if not matcher.is_usable:
+            db.save_cue_threshold_scan_error(
+                podcast_id, episode_id, 'cue templates could not be loaded')
+            return
+        for path in audio_paths:
+            signals, debug = matcher.detect_with_debug(path)
+            for s in signals:
+                scores.append((s.details or {}).get('score', s.confidence))
+            for t in debug.get('templates', []):
+                peaks[t['id']] = max(peaks.get(t['id'], 0.0), t.get('peak_score', 0.0))
+        suggestion = suggest_cue_threshold(scores, effect_floor=effect_floor)
+        db.save_cue_threshold_scan_result(podcast_id, episode_id, {
+            'suggestion': suggestion,
+            'sampleEpisodes': len(audio_paths),
+            'floorUsed': AUDIO_CUE_SUGGEST_FLOOR,
+            'perTemplate': peaks,
+        })
+    except Exception as e:
+        logger.warning(f"Cue threshold scan failed for {slug}:{episode_id}: {e}")
+        db.save_cue_threshold_scan_error(podcast_id, episode_id, str(e))
+
+
+@api.route('/feeds/<slug>/cue-threshold-suggest', methods=['POST'])
+@log_request
+def cue_threshold_suggest(slug):
+    """Suggest a global cue match threshold by sweeping this episode and recent
+    siblings at a low floor and gap-finding between noise and signal. Backgrounded
+    (multi-episode decode); the client polls status 'scanning'|'ready'|'error'."""
+    db = get_database()
+    storage = get_storage()
+    podcast = db.get_podcast_by_slug(slug)
+    if not podcast:
+        return error_response('feed not found', 404)
+    data = request.get_json(silent=True) or {}
+    episode_id = data.get('episodeId')
+    if not episode_id or not is_valid_episode_id(episode_id):
+        return error_response('a valid episodeId is required', 400)
+    podcast_id = podcast['id']
+    force = bool(data.get('rescan'))
+
+    state = db.claim_cue_threshold_scan(
+        podcast_id, episode_id, AUDIO_CUE_CANDIDATE_SCAN_STALE_SECONDS, force=force)
+    if state == 'ready':
+        row = db.get_cue_threshold_scan(podcast_id, episode_id)
+        result = json.loads((row or {}).get('result_json') or '{}')
+        return json_response({'episodeId': episode_id, 'status': 'ready', **result})
+    elif state == 'scanning':
+        return json_response({'episodeId': episode_id, 'status': 'scanning'})
+    elif state == 'error':
+        row = db.get_cue_threshold_scan(podcast_id, episode_id)
+        return json_response({'episodeId': episode_id, 'status': 'error',
+                              'error': (row or {}).get('error') or 'threshold scan failed'})
+
+    # state == 'started': resolve audio, load templates, sweep in background.
+    templates = db.list_active_cue_templates_for_feed(podcast_id)  # same loader as cue-scan
+    if not templates:
+        db.save_cue_threshold_scan_error(podcast_id, episode_id, 'no cue templates on this feed')
+        return error_response('mark at least one cue first', 400)
+    audio_path, err = _resolve_original_audio(db, storage, slug, episode_id)
+    if err:
+        db.save_cue_threshold_scan_error(podcast_id, episode_id, 'original audio not retained for this episode')
+        return err
+    siblings = _completed_sibling_audio_paths(db, storage, slug, episode_id)
+    audio_paths = [str(audio_path)] + siblings[:AUDIO_CUE_SUGGEST_MAX_EPISODES - 1]
+    formant_atten = db.get_setting_float('audio_cue_formant_atten_db', AUDIO_CUE_FORMANT_ATTEN_DB)
+    effect_floor = _live_effect_floor(db)
+    threading.Thread(
+        target=_run_cue_threshold_scan,
+        args=(podcast_id, episode_id, slug, audio_paths, templates, formant_atten, effect_floor),
+        daemon=True,
+        name=f'cue-threshold-{episode_id}',
+    ).start()
+    return json_response({'episodeId': episode_id, 'status': 'scanning'})
