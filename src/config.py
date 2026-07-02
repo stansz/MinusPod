@@ -191,25 +191,16 @@ AUDIO_CUE_ONSET_LAG_SECONDS = 0.2    # ebur128 momentary loudness integrates ove
 # dip below 0.85 with background beds) against false positives (non-cue audio
 # sits near 0.0). Tuneable via the audio_cue_template_score DB setting.
 AUDIO_CUE_TEMPLATE_SCORE = 0.75
-# Near-miss telemetry (#350 Phase 6). When the live cue pipeline runs, the
-# matcher also records sub-threshold peaks in a band just below the resolved
-# per-feed threshold so the telemetry can answer WHY a cue did not fire. These
-# are advisory rows only (outcome='below_threshold') -- never signals, so snap /
-# pair / prompt / detected-cues stay blind. DELTA is the width of that band
-# (floor = max(MIN_FLOOR, threshold - DELTA)); MIN_FLOOR keeps the floor off the
-# noise carpet; MAX_PER_TEMPLATE caps how many near-misses one template reports
-# so a noisy episode cannot balloon the telemetry table.
+# Near-miss band: [max(MIN_FLOOR, threshold - DELTA), threshold). Advisory only (#350).
 AUDIO_CUE_NEAR_MISS_DELTA = 0.2
 AUDIO_CUE_NEAR_MISS_MIN_FLOOR = 0.5
 AUDIO_CUE_NEAR_MISS_MAX_PER_TEMPLATE = 10
-# Ad-affinity typing for recurring cue candidates (#350 Phase 4). A recurring
-# candidate's occurrence is counted as a "hit" if it lands within
-# TOLERANCE_SECONDS of any known ad boundary (start or end). Candidates with
-# affinity >= MIN_FRACTION and hits >= 2 get a suggestedType; those below get
-# content_transition. PHASE_FRACTION controls start/end disambiguation: if
-# >= PHASE_FRACTION of hits are near a start boundary, the type is
-# ad_break_start; if >= PHASE_FRACTION are near an end boundary, ad_break_end;
-# otherwise ad_break_boundary.
+
+
+def resolve_near_miss_floor(threshold):
+    """Near-miss floor = max(MIN_FLOOR, threshold - DELTA)."""
+    return max(AUDIO_CUE_NEAR_MISS_MIN_FLOOR, threshold - AUDIO_CUE_NEAR_MISS_DELTA)
+# Ad-affinity: hit = occurrence within TOLERANCE of a stored ad edge; PHASE_FRACTION splits start/end (#350).
 AUDIO_CUE_AD_AFFINITY_TOLERANCE_SECONDS = 5.0
 AUDIO_CUE_AD_AFFINITY_MIN_FRACTION = 0.6
 AUDIO_CUE_AD_AFFINITY_PHASE_FRACTION = 0.8
@@ -366,26 +357,27 @@ def resolve_detection_mode(db, slug):
     return mode if mode in DETECTION_MODES else DETECTION_MODE_BLACKLIST
 
 
-def resolve_cue_template_score(db, podcast_id):
-    """Per-feed cue match threshold, falling back to the global setting.
-
-    If the feed has a non-None cue_template_score_override, that value wins.
-    Otherwise returns the global audio_cue_template_score setting, or the
-    hard-coded default when the setting is absent.
-    """
+def resolve_cue_template_score_with_source(db, podcast_id):
+    """Per-feed cue match threshold with source tag ('override' or 'global')."""
     try:
         if db and podcast_id is not None:
             override = db.get_podcast_cue_score_override(podcast_id)
             if override is not None:
-                return override
+                return override, 'override'
     except Exception:
         pass
     try:
         if db:
-            return db.get_setting_float('audio_cue_template_score', AUDIO_CUE_TEMPLATE_SCORE)
+            return db.get_setting_float('audio_cue_template_score', AUDIO_CUE_TEMPLATE_SCORE), 'global'
     except Exception:
         pass
-    return AUDIO_CUE_TEMPLATE_SCORE
+    return AUDIO_CUE_TEMPLATE_SCORE, 'global'
+
+
+def resolve_cue_template_score(db, podcast_id):
+    """Per-feed cue match threshold, falling back to the global setting."""
+    score, _ = resolve_cue_template_score_with_source(db, podcast_id)
+    return score
 
 
 # Cue template types (#350). A cue is one of a fixed set of types chosen from a

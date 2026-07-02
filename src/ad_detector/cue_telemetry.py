@@ -29,7 +29,7 @@ from ad_detector.cue_boundary_snap import (
 )
 
 
-def _cue_key(template_id, start):
+def cue_key(template_id, start):
     """Stable (template_id, start) key for matching a cue to a pair/snap record.
 
     Rounds to 3 decimals -- the same precision cue_pair/cue_snap store cue_start
@@ -40,6 +40,9 @@ def _cue_key(template_id, start):
         return (template_id, round(float(start), 3))
     except (TypeError, ValueError):
         return (template_id, None)
+
+
+_cue_key = cue_key
 
 
 def build_cue_detection_records(

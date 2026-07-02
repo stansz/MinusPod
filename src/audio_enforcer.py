@@ -225,10 +225,7 @@ class AudioEnforcer:
             "with no promotional transcript content are NOT ads.\n"
         )
 
-        # When a labelled template cue fired, inject detailed interpretation at
-        # runtime so it reaches every user -- including those who customized their
-        # system prompt (is_default=0) and therefore do not carry the static
-        # LABELLED AUDIO CUES guidance (#350).
+        # Runtime block so custom system prompts still get cue guidance (#350).
         cue_guidance = (
             "\nLABELLED AUDIO CUES: a cue above is a recurring non-spoken sound this show plays "
             "around an ad break. A cue immediately before promotional copy marks the ad's START "

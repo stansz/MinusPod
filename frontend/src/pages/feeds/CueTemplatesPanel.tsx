@@ -22,7 +22,7 @@ import {
   type ThresholdSuggestResponse,
 } from '../../api/cueTemplates';
 import { getCueFeedAdvisory } from '../../api/cueDetections';
-import { getEpisode, getEpisodes, getFeed, getFeeds, updateFeed } from '../../api/feeds';
+import { getEpisode, getEpisodes, getFeed, getFeeds, updateFeed, CUE_SCORE_MAX } from '../../api/feeds';
 import { getSettings } from '../../api/settings';
 import type { Feed } from '../../api/types';
 import type { Episode } from '../../api/types';
@@ -770,7 +770,7 @@ function CueScanModal({ slug, onClose }: CueScanModalProps) {
               id="score-override"
               type="number"
               min={0}
-              max={0.99}
+              max={CUE_SCORE_MAX}
               step={0.05}
               placeholder="default"
               value={scoreOverride}
@@ -784,8 +784,8 @@ function CueScanModal({ slug, onClose }: CueScanModalProps) {
             onClick={() => {
               if (!selectedEpisode) return;
               const n = scoreOverride.trim() === '' ? undefined : Number(scoreOverride);
-              if (n !== undefined && (Number.isNaN(n) || n < 0 || n > 0.99)) {
-                setError('threshold must be between 0 and 0.99');
+              if (n !== undefined && (Number.isNaN(n) || n < 0 || n > CUE_SCORE_MAX)) {
+                setError(`threshold must be between 0 and ${CUE_SCORE_MAX}`);
                 return;
               }
               runScan(selectedEpisode, n);

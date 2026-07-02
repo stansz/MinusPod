@@ -193,9 +193,15 @@ def _format_cue_section(*, audio_analysis, ad_start: float, ad_end: float,
                 continue
             template = is_template_cue(details)
             if near_start_edge:
-                (near_start_tmpl if template else near_start_spec).append((cue, label))
+                if template:
+                    near_start_tmpl.append((cue, label))
+                else:
+                    near_start_spec.append(cue)
             if near_end_edge:
-                (near_end_tmpl if template else near_end_spec).append((cue, label))
+                if template:
+                    near_end_tmpl.append((cue, label))
+                else:
+                    near_end_spec.append(cue)
 
         if near_start_tmpl or near_end_tmpl:
             lines.append("AUDIO CUE EVIDENCE:")
@@ -219,13 +225,13 @@ def _format_cue_section(*, audio_analysis, ad_start: float, ad_end: float,
 
         if near_start_spec or near_end_spec:
             lines.append("GENERIC AUDIO CUES NEARBY (weak evidence):")
-            for cue, label in near_start_spec:
+            for cue in near_start_spec:
                 lines.append(
                     f"  - near AD START: loudness burst at "
                     f"{cue.start:.1f}s-{cue.end:.1f}s "
                     f"(confidence {cue.confidence:.0%})"
                 )
-            for cue, label in near_end_spec:
+            for cue in near_end_spec:
                 lines.append(
                     f"  - near AD END: loudness burst at "
                     f"{cue.start:.1f}s-{cue.end:.1f}s "

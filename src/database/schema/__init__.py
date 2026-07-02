@@ -1427,15 +1427,8 @@ class SchemaMixin:
                     FOREIGN KEY (podcast_id) REFERENCES podcasts(id) ON DELETE CASCADE
                 )
             """)
-            # One-time rebuild for DBs created while outcome still carried the
-            # CHECK that predates 'below_threshold' (#350 Phase 6 near-miss
-            # telemetry). SQLite can't ALTER a CHECK, so those DBs would reject
-            # the new advisory outcome. Drop the outcome CHECK by rebuilding;
-            # the app layer (_VALID_OUTCOMES) validates the value, matching
-            # ALTER-path DBs that never had it. The verdict CHECK is kept intact.
-            # Nothing FK-references this table, so the drop/rename is safe.
-            # Idempotent: runs only while the outcome CHECK is still present.
-            # THE DATA-LOSS RULE IS ABSOLUTE: row-count verified before the drop.
+            # Rebuild cue_detections to drop the legacy outcome CHECK ('below_threshold' needs it gone).
+            # Row-count verified before drop; idempotent (gate: CHECK(outcome in sqlite_master SQL).
             cd_sql_row = conn.execute(
                 "SELECT sql FROM sqlite_master "
                 "WHERE type='table' AND name='cue_detections'"

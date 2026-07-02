@@ -153,9 +153,7 @@ def scan(
     typer.echo(f"json:   {json_path}")
     if not scan_result.get("available"):
         typer.echo(f"scan skipped: {scan_result.get('skip_reason')}")
-    if xep_result is not None and not xep_result.get("available"):
-        typer.echo(f"cross-episode skipped: {xep_result.get('skip_reason')}")
-    elif xep_result is not None and xep_result.get("skip_reason"):
+    if xep_result is not None and xep_result.get("skip_reason"):
         typer.echo(f"cross-episode skipped: {xep_result.get('skip_reason')}")
 
 

@@ -84,10 +84,7 @@ class AudioAnalysisResult:
     loudness_frames: List[LoudnessFrame] = field(default_factory=list)
     analysis_time_seconds: float = 0.0
     errors: List[str] = field(default_factory=list)
-    # Sub-threshold cue peaks the template matcher recorded for telemetry (#350
-    # Phase 6). Advisory only: these are NOT signals, so prompt / snap / pair /
-    # detected-cues never see them. Each item is a dict with template_id, label,
-    # cue_type, role, start_s, end_s, score.
+    # Near-miss telemetry (#350). Advisory only -- never signals.
     cue_near_misses: List[Dict[str, Any]] = field(default_factory=list)
 
     def get_signals_by_type(self, signal_type: str) -> List[AudioSegmentSignal]:

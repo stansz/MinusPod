@@ -354,11 +354,7 @@ CREATE TABLE IF NOT EXISTS cue_detections (
     end_s REAL NOT NULL,
     match_score REAL,
     confidence REAL,
-    -- outcome carries no CHECK: 'below_threshold' (#350 Phase 6 near-miss
-    -- telemetry) was added after the initial 'snap'/'pair'/'none' set, and
-    -- SQLite cannot ALTER a CHECK. The app layer (_VALID_OUTCOMES in
-    -- database/cue_detections.py) validates the value; the migration in
-    -- schema/__init__.py rebuilds legacy DBs to match this CHECK-free shape.
+    -- no CHECK: outcomes validated in app code (_VALID_OUTCOMES).
     outcome TEXT NOT NULL DEFAULT 'none',
     verdict TEXT NOT NULL DEFAULT 'pending' CHECK(verdict IN ('pending', 'confirmed', 'rejected')),
     -- Signed distance from an above-threshold cue to the nearest pre-snap LLM

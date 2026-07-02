@@ -203,19 +203,8 @@ def _find_shared_segments(target, siblings, win, similarity, min_matches,
             if len(cand) < min_matches:
                 break
             alive, hi = cand, hi + step
-        # Fine-edge refinement (bidirectional, survivor-preserving). The coarse
-        # step is `step` subfps, so each boundary can be off by up to step-1: a
-        # partially-matching 8-subfp step can OVERSHOOT (its tail is noise yet the
-        # slice still cleared similarity) or a bounds/similarity stop can leave the
-        # true edge a few subfps beyond. Per edge we first RETRACT past overshoot,
-        # then EXTEND, one subfp at a time, using an R-subfp (>=128-bit) window --
-        # the minimum meaningful slice at 0.73; a 1-subfp (32-bit) slice is noise.
-        #
-        # Invariant: `alive` NEVER shrinks here. Every accepted step must preserve
-        # the FULL coarse survivor set (len(_slice_ok(...)) == len(alive)); we only
-        # read _slice_ok's length and never reassign `alive`. Sub-second edge detail
-        # must be common to every reported sibling: trading a sibling for ~0.125s of
-        # span degrades the count surfaced as episodeMatches.
+        # Fine refinement: retract coarse overshoot, then extend 1 subfp at a time using 4-subfp windows
+        # (a 1-subfp slice is 32 bits -- too noisy at 0.73). Never drops a survivor; count stays coarse.
         R = min(4, win)
         fine_limit = max(1, step - 1)
         # hi edge: retract overshoot, then extend.

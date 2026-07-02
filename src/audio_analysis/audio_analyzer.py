@@ -17,9 +17,8 @@ from .transition_detector import TransitionDetector
 from .cue_template_matcher import AudioCueTemplateMatcher
 from config import (
     AUDIO_CUE_FORMANT_ATTEN_DB,
-    AUDIO_CUE_NEAR_MISS_DELTA,
-    AUDIO_CUE_NEAR_MISS_MIN_FLOOR,
     resolve_cue_template_score,
+    resolve_near_miss_floor,
 )
 
 # Import from utils for consistent audio duration implementation
@@ -143,12 +142,7 @@ class AudioAnalyzer:
             )
             if templates:
                 score = resolve_cue_template_score(self.db, feed_id)
-                # Near-miss floor derives from the RESOLVED per-feed threshold
-                # (score - DELTA), clamped up to MIN_FLOOR so it never dips into
-                # the noise carpet (#350 Phase 6). Sub-threshold peaks in
-                # [floor, score) become advisory telemetry, never signals.
-                near_miss_floor = max(
-                    AUDIO_CUE_NEAR_MISS_MIN_FLOOR, score - AUDIO_CUE_NEAR_MISS_DELTA)
+                near_miss_floor = resolve_near_miss_floor(score)
                 matcher = AudioCueTemplateMatcher(
                     templates=templates, score_threshold=score,
                     formant_atten_db=self.db.get_setting_float(
@@ -307,10 +301,7 @@ class AudioAnalyzer:
         if cue_enabled and cue_detector:
             if status_callback:
                 status_callback("analyzing: audio cues", 40)
-            # The template matcher also surfaces sub-threshold near-misses via
-            # detect_with_debug (#350 Phase 6). The spectral fallback has no such
-            # concept and stays on the plain detect() path. Near-misses are
-            # advisory telemetry only -- never added to signals.
+            # Matcher path surfaces near-misses via detect_with_debug; spectral uses detect().
             is_matcher = isinstance(cue_detector, AudioCueTemplateMatcher)
             cue_result, cue_error = self._run_component_with_timeout(
                 'audio_cue',

@@ -1,6 +1,8 @@
 import { apiRequest, buildQueryString, csrfHeaders, extractErrorMessage } from './client';
 import { Feed, Episode, EpisodeDetail, BulkActionResult, AdDistribution } from './types';
 
+export const CUE_SCORE_MIN = 0.30;
+export const CUE_SCORE_MAX = 0.99;
 
 export interface PeaksResponse {
   episodeId: string;

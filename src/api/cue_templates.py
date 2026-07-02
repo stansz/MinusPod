@@ -69,6 +69,7 @@ from config import (
     AUDIO_CUE_AD_AFFINITY_MIN_FRACTION,
     AUDIO_CUE_AD_AFFINITY_PHASE_FRACTION,
     resolve_cue_template_score,
+    resolve_cue_template_score_with_source,
 )
 from utils.constants import EpisodeStatus
 from utils.validation import is_valid_episode_id
@@ -366,9 +367,7 @@ def cue_scan_episode(slug, episode_id):
             return error_response('scoreThreshold must be a number', 400)
         threshold_source = 'request'
     else:
-        per_feed = db.get_podcast_cue_score_override(podcast['id'])
-        score = resolve_cue_template_score(db, podcast['id'])
-        threshold_source = 'override' if per_feed is not None else 'global'
+        score, threshold_source = resolve_cue_template_score_with_source(db, podcast['id'])
     matcher = AudioCueTemplateMatcher(
         templates=templates, score_threshold=score,
         formant_atten_db=db.get_setting_float(
@@ -444,7 +443,7 @@ def preview_cue_template(slug, episode_id):
     if err:
         return err
 
-    score = resolve_cue_template_score(db, podcast['id'])
+    score, _ = resolve_cue_template_score_with_source(db, podcast['id'])
     matcher = AudioCueTemplateMatcher(
         templates=[template], score_threshold=score,
         formant_atten_db=db.get_setting_float(
@@ -809,6 +808,16 @@ def _completed_sibling_audio_paths(db, storage, slug, episode_id):
     return paths
 
 
+def _parse_ad_markers(raw):
+    """Parse ad_markers_json; tolerates None/bad JSON. Returns [] on failure."""
+    try:
+        parsed = json.loads(raw) if raw else []
+        return parsed if isinstance(parsed, list) else []
+    except (json.JSONDecodeError, TypeError, ValueError):
+        logger.warning('cue_templates: unparseable ad_markers_json')
+        return []
+
+
 # Number of top recurring candidates to run sibling matching against.
 _AFFINITY_SIBLING_TOP_N = 5
 # Max siblings to pull ad history from for sibling-fallback affinity.
@@ -816,16 +825,7 @@ _AFFINITY_SIBLING_MAX = 2
 
 
 def _sibling_affinity_fallback(recurring, slug, episode_id, db, storage, audio_path, podcast_id=None):
-    """Compute ad-boundary affinity using up to 2 recent sibling episodes.
-
-    Used only when the scanned episode has no usable ad history. Builds ephemeral
-    MFCC templates for the top 5 recurring candidates (no DB writes), runs one
-    template-matcher pass per sibling with all templates at once (the episode
-    decode dominates the cost, so 2 decodes total instead of 5x2), and pools
-    hit/count across siblings to compute affinity. Cleanly skipped when no
-    sibling has both ad history and retained audio. Annotates
-    affinitySource='siblings' on candidates that got sibling evidence.
-    """
+    """Affinity from up to 2 recent siblings with ad markers + retained audio, when the episode has no ad history."""
     if not recurring:
         return recurring
     for c in recurring:
@@ -839,7 +839,9 @@ def _sibling_affinity_fallback(recurring, slug, episode_id, db, storage, audio_p
         slug, exclude_episode_id=episode_id,
         limit=AUDIO_CUE_XEP_SIBLING_LOOKBACK)
     usable_siblings = []
-    for row in sibling_rows:
+    for _i, row in enumerate(sibling_rows):
+        if _i >= 8:
+            break
         sib_eid = row['episode_id']
         sib_ep = db.get_episode(slug, sib_eid)
         if not sib_ep or not sib_ep.get('original_file'):
@@ -847,11 +849,8 @@ def _sibling_affinity_fallback(recurring, slug, episode_id, db, storage, audio_p
         sib_path = str(storage.get_original_path(slug, sib_eid))
         if not os.path.exists(sib_path):
             continue
-        try:
-            ad_spans = json.loads(row['ad_markers_json'])
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if not isinstance(ad_spans, list) or not ad_spans:
+        ad_spans = _parse_ad_markers(row.get('ad_markers_json'))
+        if not ad_spans:
             continue
         usable_siblings.append({'path': sib_path, 'ad_spans': ad_spans})
         if len(usable_siblings) >= _AFFINITY_SIBLING_MAX:
@@ -1015,18 +1014,10 @@ def _run_cue_candidate_scan(podcast_id, episode_id, slug, audio_path,
         recurring = _drop_speechlike_recurring(recurring, audio_path)
         # Phase 4: ad-affinity typing -- annotate recurring candidates with
         # suggestedType based on proximity to known ad boundaries.
-        episode_ad_spans = []
         episode_row = db.get_episode(slug, episode_id)
-        if episode_row:
-            raw_json = episode_row.get('ad_markers_json')
-            try:
-                parsed = json.loads(raw_json) if raw_json else []
-                if isinstance(parsed, list):
-                    episode_ad_spans = parsed
-            except (json.JSONDecodeError, TypeError):
-                logger.warning(
-                    'cue candidate scan: unparseable ad_markers_json for %s/%s',
-                    slug, episode_id)
+        episode_ad_spans = _parse_ad_markers(
+            (episode_row or {}).get('ad_markers_json')
+        )
         if episode_ad_spans:
             recurring = annotate_recurring_with_ad_affinity(
                 recurring, episode_ad_spans,

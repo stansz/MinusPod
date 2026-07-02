@@ -29,15 +29,9 @@ from config import (
 logger = logging.getLogger('podcast.claude.cue_snap')
 
 
-# How far back from the ad start the cue is allowed to sit. Stingers usually
-# land 0-3s before the spoken copy. Fallback when DB key is absent; the live
-# value (audio_cue_snap_lead_seconds) is threaded in by the caller.
+# Fallback; live value from audio_cue_snap_lead_seconds.
 DEFAULT_SNAP_LEAD_SECONDS = 10.0
-# How far past the ad start the cue is allowed to sit. Detection latency
-# (whisper segment alignment + first-pass window edge) puts the LLM's start
-# slightly after the cue some of the time, so we allow a small overshoot.
-# Fallback when DB key is absent; the live value (audio_cue_snap_lag_seconds)
-# is threaded in by the caller.
+# Fallback; live value from audio_cue_snap_lag_seconds.
 DEFAULT_SNAP_LAG_SECONDS = 4.0
 # Gap between the cue's end and the snapped ad start. Tiny lead so the cut
 # does not slice into the trailing decay of the ding.
@@ -58,11 +52,7 @@ def _cue_role(cue) -> str:
 
 
 def _snap_record(original: float, proposed: float, cue, n_candidates: int = 1) -> Dict:
-    """Build the per-edge snap audit record shared by the start and end edges.
-
-    When 2+ eligible cues were in the window, 'ambiguous' and 'candidates' are
-    added so the reviewer prompt can surface alternatives (#350 Phase 7).
-    """
+    """Build snap audit; sets ambiguous/candidates when 2+ eligible cues."""
     details = cue.details or {}
     rec = {
         'original': round(original, 3),

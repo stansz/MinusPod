@@ -85,10 +85,7 @@ class AudioCueTemplateMatcher:
     ):
         self.score_threshold = score_threshold
         self.max_matches_per_template = max_matches_per_template
-        # Near-miss telemetry floor (#350 Phase 6). When set, peaks in
-        # [floor, threshold) are collected as advisory near-misses -- never
-        # signals. None (default) reproduces the pre-Phase-6 behavior exactly:
-        # no near-misses, and _scan_chunk peak-picks at the threshold as before.
+        # Peaks in [floor, threshold) become advisory near-misses when set.
         self.near_miss_floor = near_miss_floor
         # Global voiceover-robust profile (#350); 0 dB = off = un-weighted MFCC.
         self._formant_atten_db = float(formant_atten_db)
@@ -229,9 +226,7 @@ class AudioCueTemplateMatcher:
             kept_signals_by_template[tid] = kept
             signals.extend(kept)
 
-        # Near-miss finalization (#350 Phase 6). Dedupe each template's misses
-        # against its kept signals AND against each other on the same 0.25s
-        # rule, then cap per template. Empty when near_miss_floor is None.
+        # Dedupe and cap near-misses per template.
         near_misses: List[Dict] = []
         for tid, misses in per_template_near_misses.items():
             if not misses:
@@ -330,7 +325,8 @@ class AudioCueTemplateMatcher:
                             'score': round(score, 3),
                         },
                     ))
-                else:
+                elif (len(per_template_near_misses[tpl.template_id])
+                      < AUDIO_CUE_NEAR_MISS_MAX_PER_TEMPLATE * 5):
                     # In [near_miss_floor, threshold): advisory near-miss only.
                     per_template_near_misses[tpl.template_id].append({
                         'template_id': tpl.template_id,

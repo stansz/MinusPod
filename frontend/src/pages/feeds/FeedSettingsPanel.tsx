@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getNetworks, updateFeed, UpdateFeedPayload } from '../../api/feeds';
+import { getNetworks, updateFeed, UpdateFeedPayload, CUE_SCORE_MIN, CUE_SCORE_MAX } from '../../api/feeds';
 import { getSettings } from '../../api/settings';
 import type { Feed } from '../../api/types';
 import CollapsibleSection from '../../components/CollapsibleSection';
@@ -264,8 +264,8 @@ function FeedSettingsPanel({ feed, slug }: Props) {
             <div className="flex items-center gap-2 flex-wrap">
               <input
                 type="number"
-                min={0.30}
-                max={0.99}
+                min={CUE_SCORE_MIN}
+                max={CUE_SCORE_MAX}
                 step={0.01}
                 value={cueScoreInput}
                 placeholder={
@@ -280,7 +280,7 @@ function FeedSettingsPanel({ feed, slug }: Props) {
                     updateMutation.mutate({ cueTemplateScoreOverride: null });
                   } else {
                     const v = parseFloat(raw);
-                    if (!Number.isNaN(v) && v >= 0.30 && v <= 0.99) {
+                    if (!Number.isNaN(v) && v >= CUE_SCORE_MIN && v <= CUE_SCORE_MAX) {
                       updateMutation.mutate({ cueTemplateScoreOverride: v });
                     }
                   }

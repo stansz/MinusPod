@@ -18,11 +18,7 @@ from typing import Dict, List
 logger = logging.getLogger(__name__)
 
 _VALID_VERDICTS = ('pending', 'confirmed', 'rejected')
-# Outcome values the app layer accepts. The DB no longer enforces a CHECK on
-# outcome (SQLite cannot ALTER one, and 'below_threshold' was added after the
-# initial set), so this guard is the single source of truth -- mirror of
-# _VALID_VERDICTS. The migration in schema/__init__.py rebuilds legacy DBs to
-# the CHECK-free shape.
+# App-layer guard; the DB CHECK was dropped for 'below_threshold'.
 _VALID_OUTCOMES = ('snap', 'pair', 'none', 'below_threshold')
 
 # Shared aggregate projection for the per-feed and global telemetry views.

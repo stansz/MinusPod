@@ -423,9 +423,7 @@ def _detect_ads_first_pass(ctx, segments, audio_path,
     # cannot warp the boundary beyond what the user has authorised. Implicitly
     # gated: there are no audio_cue signals unless cue detection ran, so this
     # is a no-op when the master toggle is off (issue #350).
-    # Snapshot the ad edges BEFORE snap so cue telemetry can measure each cue's
-    # distance to the LLM/synth ad edge it *would* have moved (snap mutates the
-    # live list in place). Captured whenever cue detection ran (#350 Phase 6).
+    # Edge snapshot before snap, for telemetry edge distances.
     snap_confidence = db.get_setting_float('audio_cue_snap_confidence', AUDIO_CUE_SNAP_CONFIDENCE)
     snap_lead = db.get_setting_float('audio_cue_snap_lead_seconds', DEFAULT_SNAP_LEAD_SECONDS)
     snap_lag = db.get_setting_float('audio_cue_snap_lag_seconds', DEFAULT_SNAP_LAG_SECONDS)

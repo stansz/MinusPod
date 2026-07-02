@@ -33,6 +33,7 @@ from config import (
     AUDIO_CUE_END_EDGE_ROLES,
     is_template_cue,
 )
+from ad_detector.cue_telemetry import cue_key as _diag_key
 
 # Skip-diagnostics reasons (#350 Phase 6). Keyed by (template_id, round(start,3))
 # so an eligible-but-unpaired cue's telemetry can explain why no ad formed.
@@ -41,13 +42,6 @@ SKIP_COVERED = 'covered_by_existing_ad'
 SKIP_NO_PARTNER = 'no_partner_in_band'
 SKIP_PHASE_MISMATCH = 'phase_mismatch'
 
-
-def _diag_key(template_id, start):
-    """Stable (template_id, round(start, 3)) key matching cue_telemetry._cue_key."""
-    try:
-        return (template_id, round(float(start), 3))
-    except (TypeError, ValueError):
-        return (template_id, None)
 
 logger = logging.getLogger('podcast.claude.cue_pair')
 
