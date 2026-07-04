@@ -173,7 +173,6 @@ function CueTemplatesPanel({ slug }: Props) {
       return;
     }
     const trimmed = editThresholdValue.trim();
-    // Empty string clears the override (null).
     if (trimmed === '') {
       if (template.scoreThreshold != null) {
         updateMutation.mutate({ id: template.id, patch: { scoreThreshold: null } });
