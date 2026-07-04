@@ -111,6 +111,7 @@ def snap_ad_boundaries_to_silence(
         # --- Start edge ------------------------------------------------
         if 'start' not in cue_snap:
             prev_ad = ads[idx - 1] if idx > 0 else None
+            # Guard B (start): reads prev_ad['end'] after any prior snap (ads mutated in order).
             prev_end = prev_ad.get('end') if prev_ad else None
 
             span = _pick_span(
@@ -144,6 +145,8 @@ def snap_ad_boundaries_to_silence(
         # --- End edge --------------------------------------------------
         if 'end' not in cue_snap:
             next_ad = ads[idx + 1] if idx < len(ads) - 1 else None
+            # Guard B (end): reads next_ad['start'] pre-snap (not yet processed),
+            # so the two sides together guarantee at least one sees the committed gap.
             next_start = next_ad.get('start') if next_ad else None
 
             span = _pick_span(
@@ -180,6 +183,9 @@ def snap_ad_boundaries_to_silence(
         # Guard A: if the pre-snap ad was long enough to be removable and the
         # snap shrinks it below the removal threshold, revert entirely.
         # Rationale: compute_applied_cuts silently drops sub-threshold cuts.
+        # Deliberately duration-only: compute_applied_cuts also keeps sub-10s cuts
+        # in the fingerprint stage and when confidence >= 0.9; ignoring those here
+        # is conservative by design -- better to revert than to silently shrink.
         snapped_duration = new_end - new_start
         if (
             pre_snap_duration >= MIN_AD_DURATION_FOR_REMOVAL

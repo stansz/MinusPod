@@ -186,19 +186,17 @@ def test_skips_end_edge_that_has_cue_snap():
 # ---------------------------------------------------------------------------
 
 def test_same_span_not_used_for_both_edges():
-    # One span at midpoint 130.0 is equidistant from start=100.0 (dist 30) and
-    # end=160.0 (dist 30) -- too far anyway -- but a span midpoint=100.5 used
-    # for start must NOT also be considered for end.
-    # Use a degenerate ad where one span's midpoint lands exactly at the midpoint
-    # of the ad, so it could snap either edge.
-    ads = [_ad(100.0, 101.0)]
-    spans = [_span(99.5, 101.5)]  # midpoint 100.5; within 2.0 of both edges
+    # Span A mid=102.0 is within max_distance of BOTH start=100.0 (dist=2.0) and
+    # end=104.0 (dist=2.0). Without the id-exclusion path the end edge would select
+    # span A as its sole candidate. The exclusion (and the sanity bound, which also
+    # kicks in after start snaps) must prevent end from snapping to the same span.
+    ads = [_ad(100.0, 104.0)]
+    spans = [_span(101.3, 102.7)]  # mid=102.0, dur=1.4; equidistant from both edges
     snap_ad_boundaries_to_silence(ads, spans, max_distance_s=2.0, min_silence_s=0.3)
-    # The snap, if any, should use the span for only ONE edge.
     rec = ads[0].get('silence_snap', {})
-    assert not ('start' in rec and 'end' in rec), (
-        "same span must not snap both start and end"
-    )
+    # Start snaps to 102.0; end must NOT also snap to the same span.
+    assert ads[0]['start'] == 102.0, "start should have snapped"
+    assert 'end' not in rec, "same span must not snap both start and end"
 
 
 # ---------------------------------------------------------------------------
@@ -349,3 +347,57 @@ def test_end_snap_cannot_pull_before_ad_start():
     assert ads[0]['start'] == 99.0 or ads[0]['start'] == 100.0  # depends on which edge wins
     # Regardless, end must not pull before start
     assert ads[0]['end'] >= ads[0]['start']
+
+
+# ---------------------------------------------------------------------------
+# Cross-ad dual-span: ad1.end snaps, ad2.start rejected by merge-gap guard
+# ---------------------------------------------------------------------------
+
+def test_cross_ad_dual_span_start_rejected_after_neighbor_snap():
+    # ad1=[50,100], ad2=[102,160]. A silence span sits between them at mid=100.5.
+    # ad1.end snaps to 100.5 (processed first, gap to ad2.start=102.0-100.5=1.5 >= 1.0).
+    # A second span at mid=101.0 is within range of ad2.start=102.0 (dist=1.0).
+    # Gap from ad1.post-snap-end=100.5 to proposed ad2.start=101.0 = 0.5 < 1.0 -> rejected.
+    ad1 = _ad(50.0, 100.0)
+    ad2 = _ad(102.0, 160.0)
+    spans = [
+        _span(100.3, 100.7),  # mid=100.5; snap ad1.end (dist=0.5)
+        _span(100.8, 101.2),  # mid=101.0; candidate for ad2.start (dist=1.0)
+    ]
+    snap_ad_boundaries_to_silence([ad1, ad2], spans, max_distance_s=2.0, min_silence_s=0.3)
+    # ad1.end should have snapped to 100.5
+    assert ad1['end'] == 100.5, f"ad1.end expected 100.5, got {ad1['end']}"
+    assert 'end' in ad1.get('silence_snap', {}), "ad1 end snap not recorded"
+    # ad2.start must remain at 102.0 (merge-gap guard rejected the snap)
+    assert ad2['start'] == 102.0, f"ad2.start expected 102.0, got {ad2['start']}"
+    assert 'start' not in ad2.get('silence_snap', {}), "ad2 start snap should have been rejected"
+
+
+# ---------------------------------------------------------------------------
+# Both guards on one ad: Guard B rejects end, Guard A reverts the whole ad
+# ---------------------------------------------------------------------------
+
+def test_both_guards_trigger_causes_whole_ad_revert():
+    # Ad [50,60] is exactly at MIN_AD_DURATION_FOR_REMOVAL=10s.
+    # A span near start (mid=55.0) passes Guard B (gap from prev_end=10.0 is large).
+    # Start snaps to 55.0 -> snapped duration = 60.0-55.0 = 5.0s < 10.0s -> Guard A reverts.
+    # A span near end (mid=60.6) fails Guard B (gap to next_ad.start=61.0 is 0.4s < 1.0).
+    # End snap is rejected. snap_record has start only; Guard A then reverts the whole ad.
+    # The neighbor ads must remain unchanged.
+    prev_ad = _ad(0.0, 10.0)
+    ad = _ad(50.0, 60.0)      # 10s exactly, at threshold
+    next_ad = _ad(61.0, 120.0)
+    spans = [
+        _span(54.5, 55.5),    # mid=55.0, dist from ad.start=5.0 (use max_distance=6.0)
+        _span(60.3, 60.9),    # mid=60.6, dist from ad.end=0.6; gap to next=0.4 < 1.0
+    ]
+    snap_ad_boundaries_to_silence(
+        [prev_ad, ad, next_ad], spans, max_distance_s=6.0, min_silence_s=0.3
+    )
+    # Guard A fires: entire ad snap reverted
+    assert ad['start'] == 50.0, f"ad.start expected 50.0, got {ad['start']}"
+    assert ad['end'] == 60.0, f"ad.end expected 60.0, got {ad['end']}"
+    assert 'silence_snap' not in ad, "snap record must be absent after full revert"
+    # Neighbors untouched (silence_snap only modifies the ad being processed)
+    assert prev_ad['end'] == 10.0
+    assert next_ad['start'] == 61.0
