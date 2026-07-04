@@ -118,7 +118,7 @@ that appear in the UI when the toggle is on.
 
 ### Finding cues
 
-Spots candidate cues in the audio and controls how long a cue may run.
+Spots candidate cues in the audio and brackets how long a cue may run.
 
 - **Frequency band** - the low and high edges, in Hz, of the band the spectral
   fallback listens in. Chimes and bells usually sit between roughly 1.5 and
