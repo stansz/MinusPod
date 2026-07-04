@@ -107,3 +107,11 @@ def test_error_logs_warning(caplog):
     assert any('silence_snap_enabled' in r.message for r in caplog.records), (
         f"Expected a warning naming the flag; got: {[r.message for r in caplog.records]}"
     )
+
+
+def test_transition_snap_error_logs_warning(caplog):
+    with caplog.at_level(logging.WARNING, logger='config'):
+        resolve_transition_snap_enabled(_ErrorDB(), 1)
+    assert any('transition_snap_enabled' in r.message for r in caplog.records), (
+        f"Expected a warning naming the flag; got: {[r.message for r in caplog.records]}"
+    )

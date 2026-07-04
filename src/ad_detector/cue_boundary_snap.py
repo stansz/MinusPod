@@ -22,10 +22,12 @@ from config import (
     AUDIO_CUE_SNAP_LEAD_SECONDS,
     AUDIO_CUE_SNAP_LAG_SECONDS,
     AUDIO_CUE_ROLE_DEFAULT,
+    AUDIO_CUE_ROLE_NON_AD,
     AUDIO_CUE_SOURCE_SPECTRAL,
     AUDIO_CUE_START_EDGE_ROLES,
     AUDIO_CUE_END_EDGE_ROLES,
     is_template_cue,
+    is_transition_cue,
 )
 
 logger = logging.getLogger('podcast.claude.cue_snap')
@@ -63,6 +65,7 @@ def _snap_record(original: float, proposed: float, cue, n_candidates: int = 1) -
         'template_id': details.get('template_id'),
         'label': details.get('label'),
         'source': details.get('source', AUDIO_CUE_SOURCE_SPECTRAL),
+        'cue_type': details.get('cue_type'),
     }
     if n_candidates >= 2:
         rec['ambiguous'] = True
@@ -77,6 +80,7 @@ def snap_ad_boundaries_to_cues(
     snap_lead_s: float = DEFAULT_SNAP_LEAD_SECONDS,
     snap_lag_s: float = DEFAULT_SNAP_LAG_SECONDS,
     min_confidence: float = MIN_CUE_CONFIDENCE_FOR_SNAP,
+    allow_transition: bool = False,
 ) -> List[Dict]:
     """Return ``ads`` with each ``start`` and ``end`` snapped to a nearby cue.
 
@@ -120,6 +124,7 @@ def snap_ad_boundaries_to_cues(
         # --- Start edge -------------------------------------------------
         start_cue, start_n = _pick_cue_for_start(
             cues, original_start, original_end, snap_lead_s, snap_lag_s,
+            allow_transition=allow_transition,
         )
         new_start = original_start
         if start_cue is not None:
@@ -145,6 +150,7 @@ def snap_ad_boundaries_to_cues(
         end_cue, end_n = _pick_cue_for_end(
             cues, original_end, new_start, snap_lead_s, snap_lag_s,
             exclude_ids=used_cue_ids,
+            allow_transition=allow_transition,
         )
         new_end = original_end
         if end_cue is not None:
@@ -179,6 +185,7 @@ def snap_ad_boundaries_to_cues(
 def _pick_cue_for_start(
     cues: List, ad_start: float, ad_end: Optional[float],
     snap_lead_s: float, snap_lag_s: float,
+    allow_transition: bool = False,
 ):
     """Find the best cue to snap ``ad_start`` to.
 
@@ -195,8 +202,14 @@ def _pick_cue_for_start(
     high = ad_start + snap_lag_s
     eligible = []
     for cue in cues:
-        if _cue_role(cue) not in AUDIO_CUE_START_EDGE_ROLES:
-            continue
+        role = _cue_role(cue)
+        # Non-ad role is gated here: role alone blocks snap; the allow_transition
+        # path widens eligibility only for content_transition (not show_intro/
+        # show_outro, which share the role but must never snap).
+        if role not in AUDIO_CUE_START_EDGE_ROLES:
+            if not (allow_transition and role == AUDIO_CUE_ROLE_NON_AD
+                    and is_transition_cue(cue.details)):
+                continue
         cue_end = cue.end
         if cue_end < low or cue_end > high:
             continue
@@ -213,6 +226,7 @@ def _pick_cue_for_end(
     cues: List, ad_end: float, ad_start: float,
     snap_lead_s: float, snap_lag_s: float,
     exclude_ids: set,
+    allow_transition: bool = False,
 ):
     """Find the best cue to snap ``ad_end`` to.
 
@@ -242,8 +256,13 @@ def _pick_cue_for_end(
     for cue in cues:
         if id(cue) in exclude_ids:
             continue
-        if _cue_role(cue) not in AUDIO_CUE_END_EDGE_ROLES:
-            continue
+        role = _cue_role(cue)
+        # Same gate as _pick_cue_for_start: transition behaves like 'boundary'
+        # (both edges) so it is eligible here too.
+        if role not in AUDIO_CUE_END_EDGE_ROLES:
+            if not (allow_transition and role == AUDIO_CUE_ROLE_NON_AD
+                    and is_transition_cue(cue.details)):
+                continue
         cue_start = cue.start
         if cue_start < low or cue_start > high:
             continue

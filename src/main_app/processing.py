@@ -27,6 +27,7 @@ from config import (
     MIN_CUT_CONFIDENCE, MAX_EPISODE_RETRIES,
     AUDIO_CUE_PAIR_CONFIDENCE, AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS,
     resolve_feed_cue_settings,
+    resolve_transition_snap_enabled,
 )
 from llm_capabilities import (
     PASS_AD_DETECTION_1, PASS_AD_DETECTION_2,
@@ -390,6 +391,7 @@ def _detect_ads_first_pass(ctx, segments, audio_path,
     snap_confidence = cue_settings['snap_confidence']
     snap_lead = cue_settings['snap_lead']
     snap_lag = cue_settings['snap_lag']
+    allow_transition = resolve_transition_snap_enabled(db, podcast_id)
 
     # Cue-pair ad synthesis (opt-in): when the LLM missed a break that the cue
     # matcher bracketed with two high-confidence cues, materialize a synthetic
@@ -442,6 +444,7 @@ def _detect_ads_first_pass(ctx, segments, audio_path,
                 min_confidence=snap_confidence,
                 snap_lead_s=snap_lead,
                 snap_lag_s=snap_lag,
+                allow_transition=allow_transition,
             )
         except Exception as e:
             audio_logger.warning(

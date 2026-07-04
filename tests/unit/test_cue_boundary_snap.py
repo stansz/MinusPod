@@ -16,6 +16,7 @@ from ad_detector.cue_boundary_snap import (
     _pick_cue_for_start,
 )
 from audio_analysis.base import AudioAnalysisResult, AudioSegmentSignal
+from config import AUDIO_CUE_TYPE_CONTENT_TRANSITION
 from main_app import processing
 
 
@@ -395,4 +396,189 @@ def test_telemetry_out_of_reach_follows_settings():
     assert len(records_wide) == 1
     assert records_wide[0]['unused_reason'] != 'out_of_reach', (
         "with lead=10.0 a cue 6s away falls inside the window and must not be out_of_reach"
+    )
+
+
+# ---------------------------------------------------------------------------
+# B4: content-transition snap (allow_transition per-feed opt-in)
+# ---------------------------------------------------------------------------
+
+def _transition_cue(start, end, conf=0.9, template_id=5):
+    """Template cue with cue_type=content_transition (role=non_ad)."""
+    return AudioSegmentSignal(
+        start=start, end=end, signal_type='audio_cue', confidence=conf,
+        details={
+            'source': 'template',
+            'label': 'transition',
+            'template_id': template_id,
+            'role': 'non_ad',
+            'cue_type': AUDIO_CUE_TYPE_CONTENT_TRANSITION,
+        },
+    )
+
+
+def _show_boundary_cue(start, end, cue_type, conf=0.9, template_id=6):
+    """Template cue with show_intro or show_outro type (role=non_ad)."""
+    return AudioSegmentSignal(
+        start=start, end=end, signal_type='audio_cue', confidence=conf,
+        details={
+            'source': 'template',
+            'label': cue_type,
+            'template_id': template_id,
+            'role': 'non_ad',
+            'cue_type': cue_type,
+        },
+    )
+
+
+def test_transition_snap_moves_start_edge():
+    """allow_transition=True: a content_transition cue snaps the start edge."""
+    ads = [{'start': 100.0, 'end': 160.0}]
+    result = _result_with(_transition_cue(start=98.0, end=99.5))
+    snap_ad_boundaries_to_cues(ads, result, max_boundary_shift_s=10.0,
+                                allow_transition=True)
+    assert ads[0]['start'] == 99.55
+
+
+def test_transition_snap_moves_end_edge():
+    """allow_transition=True: a content_transition cue snaps the end edge."""
+    ads = [{'start': 100.0, 'end': 160.0}]
+    result = _result_with(_transition_cue(start=161.0, end=161.6))
+    snap_ad_boundaries_to_cues(ads, result, max_boundary_shift_s=10.0,
+                                allow_transition=True)
+    assert ads[0]['end'] == 160.95
+
+
+def test_transition_snap_moves_both_edges():
+    """allow_transition=True: transition cues bracket the break, both edges snap."""
+    ads = [{'start': 100.0, 'end': 160.0}]
+    result = _result_with(
+        _transition_cue(start=98.5, end=99.4, template_id=5),
+        _transition_cue(start=160.4, end=161.0, template_id=6),
+    )
+    snap_ad_boundaries_to_cues(ads, result, max_boundary_shift_s=10.0,
+                                allow_transition=True)
+    assert ads[0]['start'] == 99.45
+    assert ads[0]['end'] == 160.35
+
+
+def test_transition_snap_off_by_default():
+    """allow_transition defaults to False: a content_transition cue must not snap."""
+    ads = [{'start': 100.0, 'end': 160.0}]
+    result = _result_with(_transition_cue(start=98.0, end=99.5))
+    snap_ad_boundaries_to_cues(ads, result, max_boundary_shift_s=10.0)
+    assert ads[0]['start'] == 100.0
+    assert 'cue_snap' not in ads[0]
+
+
+def test_show_intro_never_snaps_with_allow_transition():
+    """show_intro must not snap even when allow_transition=True."""
+    ads = [{'start': 100.0, 'end': 160.0}]
+    result = _result_with(_show_boundary_cue(98.0, 99.5, cue_type='show_intro'))
+    snap_ad_boundaries_to_cues(ads, result, max_boundary_shift_s=10.0,
+                                allow_transition=True)
+    assert ads[0]['start'] == 100.0
+    assert 'cue_snap' not in ads[0]
+
+
+def test_show_outro_never_snaps_with_allow_transition():
+    """show_outro must not snap even when allow_transition=True."""
+    ads = [{'start': 100.0, 'end': 160.0}]
+    result = _result_with(_show_boundary_cue(161.0, 161.6, cue_type='show_outro'))
+    snap_ad_boundaries_to_cues(ads, result, max_boundary_shift_s=10.0,
+                                allow_transition=True)
+    assert ads[0]['end'] == 160.0
+    assert 'cue_snap' not in ads[0]
+
+
+def test_transition_confidence_floor_applies():
+    """Transition cue below min_confidence must not snap even with allow_transition=True."""
+    ads = [{'start': 100.0, 'end': 160.0}]
+    result = _result_with(_transition_cue(start=98.0, end=99.5, conf=0.5))
+    snap_ad_boundaries_to_cues(ads, result, max_boundary_shift_s=10.0,
+                                allow_transition=True, min_confidence=0.80)
+    assert ads[0]['start'] == 100.0
+    assert 'cue_snap' not in ads[0]
+
+
+def test_spectral_transition_cue_never_snaps():
+    """Spectral (non-template) transition-band cues must not snap with allow_transition=True.
+
+    The is_template_cue gate filters these out before role / cue_type checks.
+    """
+    spectral = AudioSegmentSignal(
+        start=98.0, end=99.5, signal_type='audio_cue', confidence=0.9,
+        details={
+            'role': 'non_ad',
+            'cue_type': AUDIO_CUE_TYPE_CONTENT_TRANSITION,
+            # no 'source' key -> spectral fallback
+        },
+    )
+    ads = [{'start': 100.0, 'end': 160.0}]
+    result = _result_with(spectral)
+    snap_ad_boundaries_to_cues(ads, result, max_boundary_shift_s=10.0,
+                                allow_transition=True)
+    assert ads[0]['start'] == 100.0
+    assert 'cue_snap' not in ads[0]
+
+
+def test_snap_record_carries_cue_type():
+    """_snap_record includes cue_type so audits distinguish transition snaps."""
+    ads = [{'start': 100.0, 'end': 160.0}]
+    result = _result_with(_transition_cue(start=98.0, end=99.5))
+    snap_ad_boundaries_to_cues(ads, result, max_boundary_shift_s=10.0,
+                                allow_transition=True)
+    assert ads[0]['cue_snap']['start']['cue_type'] == AUDIO_CUE_TYPE_CONTENT_TRANSITION
+
+
+def _base_cue_settings_with_transition(**overrides):
+    base = {
+        'create_from_pairs': False,
+        'pair_min_break': 30.0,
+        'pair_max_break': 480.0,
+        'pair_max_break_fraction': 0.5,
+        'snap_confidence': 0.80,
+        'snap_lead': 10.0,
+        'snap_lag': 4.0,
+        'silence_snap_max_distance': 2.0,
+        'silence_snap_min_duration': 0.3,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_allow_transition_plumbing_reaches_snap():
+    """allow_transition=True from resolve_transition_snap_enabled reaches snap_ad_boundaries_to_cues."""
+    mock_snap = MagicMock(return_value=None)
+    mock_resolve_cue = MagicMock(return_value=_base_cue_settings_with_transition())
+    mock_resolve_transition = MagicMock(return_value=True)
+
+    ctx = MagicMock()
+    ctx.slug = 'test-feed'
+    ctx.episode_id = 'ep-1'
+    ctx.podcast_id = 42
+
+    audio_result = _result_with(_transition_cue(start=98.0, end=99.5))
+    ad_result_stub = {'status': 'success', 'ads': [{'start': 100.0, 'end': 160.0}]}
+
+    with patch.object(processing.db, 'get_setting', return_value=None), \
+         patch.object(processing.db, 'upsert_episode', return_value=1), \
+         patch.object(processing.status_service, 'update_job_stage'), \
+         patch.object(processing.ad_detector, 'process_transcript',
+                      return_value=ad_result_stub), \
+         patch('main_app.processing.resolve_feed_cue_settings', mock_resolve_cue), \
+         patch('main_app.processing.resolve_transition_snap_enabled',
+               mock_resolve_transition), \
+         patch('main_app.processing.snap_ad_boundaries_to_cues', mock_snap), \
+         patch('main_app.processing.snap_ad_boundaries_to_silence', MagicMock()):
+        processing._detect_ads_first_pass(
+            ctx, [], '/fake/audio.mp3',
+            skip_patterns=[], audio_analysis_result=audio_result,
+            progress_callback=None,
+        )
+
+    mock_snap.assert_called_once()
+    _, kwargs = mock_snap.call_args
+    assert kwargs.get('allow_transition') is True, (
+        f"expected allow_transition=True, got {kwargs.get('allow_transition')}"
     )

@@ -537,6 +537,18 @@ AUDIO_CUE_SOURCE_SPECTRAL = 'spectral'
 def is_template_cue(details):
     """True if a cue's ``details`` mark it as a precise template match."""
     return (details or {}).get('source') == AUDIO_CUE_SOURCE_TEMPLATE
+
+
+def is_transition_cue(details):
+    """True if a cue's ``details`` identify it as a content_transition type.
+
+    Used by snap to allow content_transition cues to move ad edges when
+    allow_transition is on, while keeping show_intro/show_outro excluded.
+    Both share the non_ad role so the cue_type check is mandatory here.
+    """
+    return (details or {}).get('cue_type') == AUDIO_CUE_TYPE_CONTENT_TRANSITION
+
+
 # Roles eligible to move each ad edge. Snap uses them per edge; cue-pair uses
 # the start set as openers and the end set as closers, so the all-boundary case
 # behaves as before and a 'start' cue can only open while an 'end' can only close.
