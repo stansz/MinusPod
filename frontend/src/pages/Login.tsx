@@ -38,18 +38,20 @@ function Login() {
             'Signed in, but the browser rejected the session cookie. ' +
             'Over plain HTTP set SESSION_COOKIE_SECURE=false or use HTTPS.'
           );
+          setIsSubmitting(false);
           return;
         }
+        // Keep isSubmitting=true through navigation so the guard cannot fire
+        // and consume takeLoginRedirect() a second time before unmount.
         navigate(takeLoginRedirect(), { replace: true });
-      } else {
-        setError('Invalid password');
-        setPassword('');
+        return;
       }
+      setError('Invalid password');
+      setPassword('');
     } catch {
       setError('Login failed. Please try again.');
-    } finally {
-      setIsSubmitting(false);
     }
+    setIsSubmitting(false);
   };
 
   return (

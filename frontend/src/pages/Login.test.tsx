@@ -128,3 +128,30 @@ describe('Login handleSubmit: wrong password', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 });
+
+describe('Login handleSubmit: deep-link guard suppression', () => {
+  it('does not render the Navigate guard after successful login (isSubmitting stays true)', async () => {
+    // This covers the race where finally { setIsSubmitting(false) } ran before
+    // unmount and let the guard consume takeLoginRedirect() a second time.
+    // After the fix, isSubmitting stays true through navigation, so the guard
+    // cannot render <Navigate> and cannot call takeLoginRedirect() again.
+    const user = userEvent.setup();
+    sessionStorage.setItem('loginRedirect', '/settings');
+    mockLogin.mockResolvedValue(true);
+    mockRefreshStatus.mockResolvedValue({ authenticated: true, passwordSet: true });
+
+    render(<Login />);
+
+    await user.type(screen.getByPlaceholderText('Password'), 'correctpassword');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledTimes(1);
+    });
+    // navigate called with the stored path, never with '/'.
+    expect(mockNavigate).toHaveBeenCalledWith('/settings', { replace: true });
+    expect(mockNavigate).not.toHaveBeenCalledWith('/', expect.anything());
+    // The Navigate sentinel must not appear -- guard must stay suppressed.
+    expect(screen.queryByTestId('navigate-sentinel')).toBeNull();
+  });
+});
