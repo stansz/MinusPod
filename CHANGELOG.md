@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Boundary-snap settings plumbing: two per-feed opt-in toggles, "Snap cuts to silence" and "Snap to content transitions" (Feed settings), and three global silence-snap tunables, silence threshold (dBFS), minimum silence duration, and maximum snap distance (Settings > Audio Cue Detection > Ad cutting). The flags and tunables are stored and served end-to-end; the detection and snap behavior that consumes them lands in a follow-up.
 - Silence boundary snap: for feeds with silence snap enabled, LLM-detected ad edges are snapped to the midpoint of the nearest qualifying silence span (within 2s, at least 0.3s long). Cue snap takes precedence; silence snap skips any edge already committed by cue snap. Two guards prevent broken cuts: an edge snap that would reduce a removable ad below the minimum removal duration (10s) is reverted for the entire ad; a snap that would leave less than 1s gap between adjacent ads is rejected. Snap details are stored per edge in `silence_snap` and surfaced as a "Silence snapped" badge in the episode ad list.
 
+### Fixed
+
+- Auth redirect loop (issue #460): fresh or incognito browsers got stuck in an infinite redirect storm, growing the path to /ui/ui/ui/login with each bounce. Three interlocking frontend bugs and one backend trigger were responsible. The frontend now waits for the auth status response before acting on it, a shared helper strips the router basename from stored redirect paths so navigate() does not prepend a second /ui, and a post-login cookie check shows an actionable error if the browser discarded a Secure cookie over plain HTTP instead of looping silently. On the backend, SESSION_COOKIE_SECURE now defaults to true only when BASE_URL starts with https, rather than unconditionally, so plain-HTTP instances no longer issue a Secure cookie that the browser immediately discards. Operators who terminate TLS at a proxy must set BASE_URL=https://... (already required for correct feed URLs) or set SESSION_COOKIE_SECURE=true explicitly to keep the previous secure behavior.
+
 ## [2.35.0] - 2026-07-04
 
 ### Added

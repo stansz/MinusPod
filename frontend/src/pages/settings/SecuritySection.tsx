@@ -9,7 +9,7 @@ interface SecuritySectionProps {
   cryptoReady?: boolean;
   isPasswordSet: boolean;
   logout: () => Promise<void>;
-  refreshStatus: () => Promise<void>;
+  refreshStatus: () => Promise<unknown>;
   plaintextSecretsCount?: number;
 }
 

@@ -7,26 +7,31 @@ interface AuthContextType {
   isPasswordSet: boolean;
   login: (password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  refreshStatus: () => Promise<void>;
+  refreshStatus: () => Promise<AuthStatus>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
+  // Start as not-authenticated so the Login guard does not fire before the
+  // real /auth/status response arrives (issue #460 root cause 1).
   const [authStatus, setAuthStatus] = useState<AuthStatus>({
     passwordSet: false,
-    authenticated: true,
+    authenticated: false,
   });
 
-  const refreshStatus = async () => {
+  const refreshStatus = async (): Promise<AuthStatus> => {
     try {
       const status = await getAuthStatus();
       setAuthStatus(status);
+      return status;
     } catch (error) {
       console.error('Failed to get auth status:', error);
       // On error, assume not authenticated
-      setAuthStatus({ passwordSet: true, authenticated: false });
+      const fallback: AuthStatus = { passwordSet: true, authenticated: false };
+      setAuthStatus(fallback);
+      return fallback;
     } finally {
       setIsLoading(false);
     }

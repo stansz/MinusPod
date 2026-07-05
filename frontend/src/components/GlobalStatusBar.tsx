@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { storeLoginRedirect } from '../utils/loginRedirect';
 
 interface ProcessingJob {
   slug: string;
@@ -142,7 +143,7 @@ function GlobalStatusBar() {
       eventSource.addEventListener('auth-failed', () => {
         eventSource.close();
         if (!window.location.pathname.includes('/login')) {
-          sessionStorage.setItem('loginRedirect', window.location.pathname);
+          storeLoginRedirect(window.location.pathname, window.location.search);
           window.location.href = '/ui/login';
         }
       });

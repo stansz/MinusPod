@@ -2,33 +2,43 @@ import { useState, FormEvent } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { takeLoginRedirect } from '../utils/loginRedirect';
 
 function Login() {
   const navigate = useNavigate();
-  const { login, isAuthenticated, isPasswordSet } = useAuth();
+  const { login, isAuthenticated, isPasswordSet, isLoading, refreshStatus } = useAuth();
   const { theme } = useTheme();
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // If already authenticated or no password set, redirect to home
-  if (isAuthenticated || !isPasswordSet) {
-    const redirectUrl = sessionStorage.getItem('loginRedirect') || '/';
-    sessionStorage.removeItem('loginRedirect');
-    return <Navigate to={redirectUrl} replace />;
+  // Guard: do NOT redirect until auth status has loaded. Redirecting on the
+  // optimistic default (issue #460 root cause 2) causes the /ui/ui/ui loop.
+  if (!isLoading && (isAuthenticated || !isPasswordSet)) {
+    return <Navigate to={takeLoginRedirect()} replace />;
   }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    setIsLoading(true);
+    setIsSubmitting(true);
 
     try {
       const success = await login(password);
       if (success) {
-        const redirectUrl = sessionStorage.getItem('loginRedirect') || '/';
-        sessionStorage.removeItem('loginRedirect');
-        navigate(redirectUrl, { replace: true });
+        // Verify the cookie actually persisted: a Secure cookie over plain HTTP
+        // is silently discarded by the browser, so the POST appears successful
+        // but the next request is unauthenticated. refreshStatus() re-fetches
+        // the real state and returns it without relying on stale closure values.
+        const realStatus = await refreshStatus();
+        if (!realStatus.authenticated) {
+          setError(
+            'Signed in, but the browser rejected the session cookie. ' +
+            'Over plain HTTP set SESSION_COOKIE_SECURE=false or use HTTPS.'
+          );
+          return;
+        }
+        navigate(takeLoginRedirect(), { replace: true });
       } else {
         setError('Invalid password');
         setPassword('');
@@ -36,7 +46,7 @@ function Login() {
     } catch {
       setError('Login failed. Please try again.');
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -78,10 +88,10 @@ function Login() {
 
             <button
               type="submit"
-              disabled={isLoading || !password}
+              disabled={isSubmitting || !password}
               className="w-full px-4 py-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors font-medium"
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {isSubmitting ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
         </div>
