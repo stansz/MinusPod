@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.36.1] - 2026-07-05
+
+### Fixed
+
+- In-app playback of the processed episode is served from the UI's own origin again. The episode API returned `processedUrl` as an absolute URL on the public feed domain, so with authenticated feeds enabled the browser player loaded the audio cross-origin through the anti-scraper edge rules and playback failed. `processedUrl` is now a relative, same-origin path carrying the feed auth key, matching the transcript and chapters URLs. Podcast-app enclosure URLs in the RSS feed are unchanged.
+
 ## [2.36.0] - 2026-07-04
 
 ### Added
