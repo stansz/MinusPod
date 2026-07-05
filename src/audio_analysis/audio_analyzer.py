@@ -23,9 +23,8 @@ from config import (
     resolve_silence_snap_enabled,
     resolve_silence_snap_tunables,
 )
-
-# Import from utils for consistent audio duration implementation
 from utils.audio import get_audio_duration
+from utils.ffmpeg_run import ffmpeg_timeout
 
 logger = logging.getLogger('podcast.audio_analysis')
 
@@ -38,8 +37,7 @@ MIN_VOLUME_TIMEOUT = 180    # 3 minutes
 
 
 def calculate_component_timeouts(duration_seconds: float) -> Dict[str, int]:
-    """
-    Calculate per-component timeouts based on episode duration.
+    """Calculate per-component timeouts based on episode duration.
 
     Returns timeouts in seconds for each analysis component.
     Longer episodes get proportionally longer timeouts.
@@ -48,6 +46,10 @@ def calculate_component_timeouts(duration_seconds: float) -> Dict[str, int]:
 
     return {
         'volume': max(MIN_VOLUME_TIMEOUT, int(duration_minutes * DEFAULT_VOLUME_TIMEOUT_MULTIPLIER)),
+        # Silence detection runs a full ffmpeg decode; size the timeout to match
+        # what SilenceDetector's own ffmpeg pass would use so the wrapper does
+        # not pre-empt the detector on long opted-in episodes.
+        'silence': ffmpeg_timeout(duration_seconds),
     }
 
 
@@ -184,13 +186,17 @@ class AudioAnalyzer:
 
         Returns None when the flag is off (default) or no DB is available.
         Settings are read per run so the toggle takes effect without restart.
+        Also caches the resolved tunables on self._silence_tunables so analyze()
+        can expose them on AudioAnalysisResult without a second DB read.
         """
+        self._silence_tunables = None
         if not self.db:
             return None
         try:
             if not resolve_silence_snap_enabled(self.db, feed_id):
                 return None
             tunables = resolve_silence_snap_tunables(self.db)
+            self._silence_tunables = tunables
             return SilenceDetector(
                 noise_db=tunables['noise_db'],
                 min_silence_s=tunables['min_duration_seconds'],
@@ -364,6 +370,9 @@ class AudioAnalyzer:
         result.signals = signals
         result.cue_near_misses = cue_near_misses
         result.silence_spans = silence_spans
+        # Expose the resolved silence tunables so processing.py can use them
+        # for snap_ad_boundaries_to_silence without a second DB read.
+        result.silence_tunables = getattr(self, '_silence_tunables', None)
         result.errors = errors
         result.loudness_baseline = baseline
         result.loudness_frames = frames

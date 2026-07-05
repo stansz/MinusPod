@@ -12,6 +12,7 @@ import subprocess
 from typing import Dict, List, Optional
 
 from utils.audio import get_audio_duration
+from utils.ffmpeg_run import ffmpeg_timeout, decode_stderr
 from utils.subprocess_registry import tracked_run
 
 logger = logging.getLogger('podcast.audio_analysis.silence')
@@ -49,7 +50,7 @@ class SilenceDetector:
             '-af', f'silencedetect=noise={self.noise_db}dB:d={self.min_silence_s}',
             '-f', 'null', '-',
         ]
-        timeout = min(max(300, int(duration / 60) * 60 + 120), 1200)
+        timeout = ffmpeg_timeout(duration)
 
         try:
             result = tracked_run(cmd, capture_output=True, timeout=timeout)
@@ -66,10 +67,7 @@ class SilenceDetector:
             )
             return []
 
-        try:
-            stderr_text = result.stderr.decode('utf-8', errors='replace')
-        except Exception:
-            stderr_text = str(result.stderr)[:20000]
+        stderr_text = decode_stderr(result)
 
         spans = self._parse(stderr_text, duration)
         logger.info(

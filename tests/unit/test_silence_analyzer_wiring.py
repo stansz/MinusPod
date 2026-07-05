@@ -7,6 +7,7 @@ Verifies:
 - Spans land on result.silence_spans.
 - to_dict() emits 'silence_spans' key only when non-empty.
 - Detector exception -> errors entry, analysis continues (no abort).
+- calculate_component_timeouts includes a decode-sized 'silence' timeout.
 """
 import os
 import sys
@@ -14,9 +15,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from audio_analysis.audio_analyzer import AudioAnalyzer
+from audio_analysis.audio_analyzer import AudioAnalyzer, calculate_component_timeouts
 from audio_analysis.base import AudioAnalysisResult
 from audio_analysis.silence_detector import SilenceDetector
+from utils.ffmpeg_run import ffmpeg_timeout
 
 
 # ---------------------------------------------------------------------------
@@ -201,3 +203,31 @@ def test_detector_exception_adds_error_and_continues():
 
     assert result.silence_spans == []
     assert any('silence' in e for e in result.errors)
+
+
+# ---------------------------------------------------------------------------
+# calculate_component_timeouts: silence timeout is decode-sized (finding 2)
+# ---------------------------------------------------------------------------
+
+def test_silence_timeout_is_decode_sized_not_volume_sized():
+    """'silence' timeout must match ffmpeg_timeout(), not the volume formula.
+
+    For a 90-minute episode the volume timeout is ~3 minutes (2s/min * 90 =
+    180s, floored to 180s). The silence detector runs a full decode, so its
+    timeout must be at least 5 minutes (the ffmpeg_timeout floor) and scale
+    with the duration -- not the same small value as volume.
+    """
+    duration = 90 * 60.0  # 90 minutes in seconds
+    timeouts = calculate_component_timeouts(duration)
+
+    assert 'silence' in timeouts, "calculate_component_timeouts must include a 'silence' key"
+
+    expected = ffmpeg_timeout(duration)  # decode-sized: min(max(300, 90*60+120), 1200) = 1200
+    assert timeouts['silence'] == expected, (
+        f"silence timeout {timeouts['silence']}s != expected decode-sized {expected}s"
+    )
+    # Sanity: silence timeout must be larger than the lightweight volume timeout.
+    assert timeouts['silence'] > timeouts['volume'], (
+        f"silence timeout ({timeouts['silence']}s) should exceed volume timeout "
+        f"({timeouts['volume']}s) for a long episode"
+    )

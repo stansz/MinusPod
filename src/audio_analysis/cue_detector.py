@@ -30,6 +30,7 @@ from config import (
     AUDIO_CUE_ONSET_LAG_SECONDS,
 )
 from utils.audio import get_audio_duration
+from utils.ffmpeg_run import ffmpeg_timeout, decode_stderr
 from utils.subprocess_registry import tracked_run
 
 logger = logging.getLogger('podcast.audio_analysis.cue')
@@ -127,8 +128,7 @@ class AudioCueDetector:
             f"ebur128=framelog=verbose:peak=sample"
         )
         cmd = ['ffmpeg', '-v', 'verbose', '-i', audio_path, '-af', af, '-f', 'null', '-']
-        # Same capped, duration-proportional timeout the volume pass uses.
-        timeout = min(max(300, int(duration / 60) * 60 + 120), 1200)
+        timeout = ffmpeg_timeout(duration)
 
         try:
             # No text=True: ffmpeg can emit non-UTF-8 bytes on stderr.
@@ -140,10 +140,7 @@ class AudioCueDetector:
             logger.error(f"Audio cue ebur128 pass failed: {e}")
             return []
 
-        try:
-            stderr_text = result.stderr.decode('utf-8', errors='replace')
-        except Exception:
-            stderr_text = str(result.stderr)[:10000]
+        stderr_text = decode_stderr(result)
 
         measurements: List[Tuple[float, float]] = []
         for line in stderr_text.split('\n'):
