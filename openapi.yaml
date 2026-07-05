@@ -12,7 +12,7 @@ info:
     - Monitor system status and trigger cleanup operations
     - Manage cross-episode ad patterns with network and podcast scope
     - Submit corrections to improve ad detection accuracy
-  version: 2.36.0
+  version: 2.36.1
   contact:
     name: MinusPod
   license:
@@ -6162,7 +6162,8 @@ components:
               format: uri
             processedUrl:
               type: string
-              format: uri
+              format: uri-reference
+              description: Relative, same-origin path to the processed audio for the in-app player, carrying the feed auth key as a query param when authenticated feeds is enabled. Not the public feed-domain enclosure URL.
             navigation:
               type: object
               description: Adjacent episodes in the same feed, newest-first order. previous is the newer episode, next the older; either is null at a feed boundary (issue #417).

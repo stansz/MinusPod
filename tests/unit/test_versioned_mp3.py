@@ -100,13 +100,18 @@ class TestProcessedUrl:
 
     def test_unversioned(self):
         from api.episodes import _processed_url
-        url = _processed_url("https://example.com", "pod", "abc123def456", 0)
-        assert url == "https://example.com/episodes/pod/abc123def456.mp3"
+        url = _processed_url("pod", "abc123def456", 0)
+        assert url == "/episodes/pod/abc123def456.mp3"
 
     def test_versioned(self):
         from api.episodes import _processed_url
-        url = _processed_url("https://example.com", "pod", "abc123def456", 3)
-        assert url == "https://example.com/episodes/pod/abc123def456-v3.mp3"
+        url = _processed_url("pod", "abc123def456", 3)
+        assert url == "/episodes/pod/abc123def456-v3.mp3"
+
+    def test_same_origin_with_key(self):
+        from api.episodes import _processed_url
+        url = _processed_url("pod", "abc123def456", 1, key="k" * 64)
+        assert url == f"/episodes/pod/abc123def456-v1.mp3?key={'k' * 64}"
 
 
 class TestRssEnclosureUrl:

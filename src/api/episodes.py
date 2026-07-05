@@ -1,7 +1,6 @@
 """Episode routes: episode listing, details, reprocessing, bulk actions."""
 import json
 import logging
-import os
 import re
 
 from flask import request, send_file, abort
@@ -39,14 +38,17 @@ def _clear_episode_for_mode(db, slug, episode_id, mode):
         db.clear_episode_details(slug, episode_id)
 
 
-def _processed_url(base_url: str, slug: str, episode_id: str, version: int,
+def _processed_url(slug: str, episode_id: str, version: int,
                    key: str = None) -> str:
-    """Build the public processed-audio URL including a version suffix when set.
+    """Build the same-origin processed-audio URL the UI player loads.
 
-    ``key`` is the feed auth key; without it the public route 401s while
-    authenticated feeds are enabled, so UI playback links must carry it.
+    Relative (no host) so the browser fetches it from the UI's own origin, not
+    the public feed domain, which sits behind anti-scraper edge rules that
+    break in-app playback. Matches the transcript/chapters URLs below. Carries
+    a version suffix when set and the feed auth ``key`` so the public route
+    does not 401 while authenticated feeds is enabled.
     """
-    return episode_public_url(base_url, slug, episode_id, version, key=key)
+    return episode_public_url("", slug, episode_id, version, key=key)
 
 
 def _get_episode_token_fields(db, episode_id: str) -> dict:
@@ -143,7 +145,6 @@ def get_episode(slug, episode_id):
     if not episode:
         return error_response('Episode not found', 404)
 
-    base_url = os.environ.get('BASE_URL', 'http://localhost:8000')
     feed_auth_key = get_feed_auth_key(db)
     key_suffix = f"?key={feed_auth_key}" if feed_auth_key else ""
 
@@ -209,9 +210,9 @@ def get_episode(slug, episode_id):
         'originalDuration': episode['original_duration'],
         'newDuration': episode['new_duration'],
         'originalUrl': episode['original_url'],
-        'processedUrl': _processed_url(base_url, slug, episode_id,
-                                        episode.get('processed_version') or 0,
-                                        key=feed_auth_key),
+        'processedUrl': _processed_url(slug, episode_id,
+                                       episode.get('processed_version') or 0,
+                                       key=feed_auth_key),
         'hasOriginalAudio': bool(episode.get('original_file')),
         'originalAudioUrl': f"/api/v1/feeds/{slug}/episodes/{episode_id}/original.mp3",
         'adsRemoved': episode['ads_removed'],
