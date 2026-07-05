@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.36.0] - 2026-07-04
+
+### Added
+
+- Silence boundary snap (per-feed opt-in): two new Feed settings toggles, "Snap cuts to silence" and "Snap to content transitions", and three global tunables -- silence threshold (dBFS), minimum silence duration, and maximum snap distance (Settings > Audio Cue Detection > Ad cutting). When "Snap cuts to silence" is on, LLM-detected ad edges are snapped to the midpoint of the nearest qualifying silence span (within 2s, at least 0.3s long). Cue snap takes precedence; silence snap skips any edge already committed by cue snap. Two guards prevent broken cuts: an edge snap that would reduce a removable ad below the minimum removal duration (10s) is reverted for the entire ad; a snap that would leave less than 1s gap between adjacent ads is rejected. Snap details are stored per edge in `silence_snap` and surfaced as a "Silence snapped" badge in the episode ad list.
+
+### Fixed
+
+- Auth redirect loop (issue #460): fresh or incognito browsers got stuck in an infinite redirect storm, growing the path to /ui/ui/ui/login with each bounce. Three interlocking frontend bugs and one backend trigger were responsible. The frontend now waits for the auth status response before acting on it, a shared helper strips the router basename from stored redirect paths so navigate() does not prepend a second /ui, and a post-login cookie check shows an actionable error if the browser discarded a Secure cookie over plain HTTP instead of looping silently. On the backend, SESSION_COOKIE_SECURE stays secure by default and now downgrades to false only when BASE_URL is explicitly plain HTTP (starts with http://). HTTPS deployments keep a Secure cookie with no configuration; plain-HTTP instances set BASE_URL=http://... (or SESSION_COOKIE_SECURE=false) so the browser no longer discards a Secure cookie it was issued over HTTP. An explicit SESSION_COOKIE_SECURE value is always honored.
+
 ## [2.35.0] - 2026-07-04
 
 ### Added

@@ -124,6 +124,8 @@ def get_settings():
         AUDIO_CUE_PAIR_CONFIDENCE, AUDIO_CUE_PAIR_MIN_BREAK_SECONDS,
         AUDIO_CUE_PAIR_MAX_BREAK_SECONDS, AUDIO_CUE_PAIR_MAX_BREAK_FRACTION,
         AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS,
+        SILENCE_SNAP_NOISE_DB, SILENCE_SNAP_MIN_DURATION_SECONDS,
+        SILENCE_SNAP_MAX_DISTANCE_SECONDS,
     )
     from chapters_generator import CHAPTERS_MODEL
     settings = _settings_view(db.get_all_settings())
@@ -367,6 +369,11 @@ def get_settings():
     audio_cue_pair_max_break_fraction = _cue_num('audio_cue_pair_max_break_fraction', AUDIO_CUE_PAIR_MAX_BREAK_FRACTION)
     audio_cue_pair_orient_window = _cue_num('audio_cue_pair_orient_window_seconds', AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS)
 
+    # Silence-snap tunables (Phase B boundary snap)
+    silence_snap_noise_db = _cue_num('silence_snap_noise_db', SILENCE_SNAP_NOISE_DB)
+    silence_snap_min_duration = _cue_num('silence_snap_min_duration_seconds', SILENCE_SNAP_MIN_DURATION_SECONDS)
+    silence_snap_max_distance = _cue_num('silence_snap_max_distance_seconds', SILENCE_SNAP_MAX_DISTANCE_SECONDS)
+
     return json_response({
         'systemPrompt': _sv('system_prompt', _setting_value(settings, 'system_prompt', DEFAULT_SYSTEM_PROMPT) or DEFAULT_SYSTEM_PROMPT),
         'verificationPrompt': _sv('verification_prompt', _setting_value(settings, 'verification_prompt', DEFAULT_VERIFICATION_PROMPT) or DEFAULT_VERIFICATION_PROMPT),
@@ -432,6 +439,9 @@ def get_settings():
         'audioCuePairMaxBreakSeconds': _sv('audio_cue_pair_max_break_seconds', audio_cue_pair_max_break),
         'audioCuePairMaxBreakFraction': _sv('audio_cue_pair_max_break_fraction', audio_cue_pair_max_break_fraction),
         'audioCuePairOrientWindowSeconds': _sv('audio_cue_pair_orient_window_seconds', audio_cue_pair_orient_window),
+        'silenceSnapNoiseDb': _sv('silence_snap_noise_db', silence_snap_noise_db),
+        'silenceSnapMinDurationSeconds': _sv('silence_snap_min_duration_seconds', silence_snap_min_duration),
+        'silenceSnapMaxDistanceSeconds': _sv('silence_snap_max_distance_seconds', silence_snap_max_distance),
         'positionalPriorEnabled': _sv('positional_prior_enabled', positional_prior_enabled),
         'audioBitrate': _sv('audio_bitrate', audio_bitrate),
         'audioNormalizeEnabled': _sv('audio_normalize_enabled', audio_normalize_enabled),
@@ -502,6 +512,9 @@ def get_settings():
             'audioCuePairMinBreakSeconds': AUDIO_CUE_PAIR_MIN_BREAK_SECONDS,
             'audioCuePairMaxBreakSeconds': AUDIO_CUE_PAIR_MAX_BREAK_SECONDS,
             'audioCuePairMaxBreakFraction': AUDIO_CUE_PAIR_MAX_BREAK_FRACTION,
+            'silenceSnapNoiseDb': SILENCE_SNAP_NOISE_DB,
+            'silenceSnapMinDurationSeconds': SILENCE_SNAP_MIN_DURATION_SECONDS,
+            'silenceSnapMaxDistanceSeconds': SILENCE_SNAP_MAX_DISTANCE_SECONDS,
             'audioBitrate': DEFAULT_AUDIO_BITRATE,
             'audioNormalizeEnabled': False,
             'audioNormalizeIntensity': 'normal',
@@ -1058,6 +1071,9 @@ def _apply_audio_cue_fields(db, data):
         ('audioCuePairMaxBreakSeconds', 'audio_cue_pair_max_break_seconds', 1.0, 3600.0),
         ('audioCuePairMaxBreakFraction', 'audio_cue_pair_max_break_fraction', 0.0, 1.0),
         ('audioCuePairOrientWindowSeconds', 'audio_cue_pair_orient_window_seconds', 0.0, 120.0),
+        ('silenceSnapNoiseDb', 'silence_snap_noise_db', -90.0, -20.0),
+        ('silenceSnapMinDurationSeconds', 'silence_snap_min_duration_seconds', 0.1, 5.0),
+        ('silenceSnapMaxDistanceSeconds', 'silence_snap_max_distance_seconds', 0.25, 10.0),
     ):
         if field_name not in data:
             continue

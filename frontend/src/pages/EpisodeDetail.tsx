@@ -536,9 +536,22 @@ function EpisodeDetail() {
                   {segment.cue_snap && (
                     <span
                       className="px-1.5 py-0.5 text-xs rounded font-medium bg-violet-500/20 text-violet-600 dark:text-violet-400"
-                      title="An audio cue snapped this ad's edge to the chime"
+                      title={
+                        (segment.cue_snap.start as Record<string, unknown> | undefined)?.cue_type === 'content_transition' ||
+                        (segment.cue_snap.end as Record<string, unknown> | undefined)?.cue_type === 'content_transition'
+                          ? "An audio cue snapped this ad's edge to the chime via content transition"
+                          : "An audio cue snapped this ad's edge to the chime"
+                      }
                     >
                       Cue snapped
+                    </span>
+                  )}
+                  {segment.silence_snap && (
+                    <span
+                      className="px-1.5 py-0.5 text-xs rounded font-medium bg-teal-500/20 text-teal-600 dark:text-teal-400"
+                      title="Ad edge snapped to nearby silence"
+                    >
+                      Silence snapped
                     </span>
                   )}
                   {segment.sponsor && (

@@ -1,3 +1,5 @@
+import { storeLoginRedirect } from '../utils/loginRedirect';
+
 const API_BASE = '/api/v1';
 
 const RETRY_DELAYS = [1000, 3000]; // 2 retries with 1s and 3s backoff
@@ -85,7 +87,7 @@ export function extractErrorMessage(body: unknown, status: number): string {
 function handleUnauthorized(endpoint: string): void {
   const currentPath = window.location.pathname;
   if (!currentPath.includes('/login') && !endpoint.startsWith('/auth/')) {
-    sessionStorage.setItem('loginRedirect', window.location.pathname);
+    storeLoginRedirect(window.location.pathname, window.location.search);
     window.location.href = '/ui/login';
     throw new Error('Authentication required');
   }

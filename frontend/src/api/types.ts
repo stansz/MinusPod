@@ -27,6 +27,8 @@ export interface Feed {
   cueSnapConfidenceOverride?: number | null;
   cueSnapLeadOverride?: number | null;
   cueSnapLagOverride?: number | null;
+  silenceSnapEnabled?: boolean | null;
+  transitionSnapEnabled?: boolean | null;
   maxEpisodes?: number | null;
   onlyExposeProcessedEpisodes?: boolean | null;
 }
@@ -148,6 +150,8 @@ export interface AdSegment {
   detection_stage?: DetectionStage;
   // Present when an audio cue snapped this ad's start/end edge (#350).
   cue_snap?: { start?: Record<string, unknown>; end?: Record<string, unknown> };
+  // Present when a silence span snapped this ad's start/end edge (Phase B).
+  silence_snap?: { start?: Record<string, unknown>; end?: Record<string, unknown> };
   validation?: AdValidation;
   // Ad reviewer (issue #197) -- populated only when the reviewer ran on this ad.
   reviewer_verdict?: 'confirmed' | 'adjust' | 'reject' | 'resurrect' | 'failure';
@@ -245,6 +249,9 @@ export interface Settings {
   audioCuePairMinBreakSeconds: SettingValueNumber;
   audioCuePairMaxBreakSeconds: SettingValueNumber;
   audioCuePairMaxBreakFraction: SettingValueNumber;
+  silenceSnapNoiseDb: SettingValueNumber;
+  silenceSnapMinDurationSeconds: SettingValueNumber;
+  silenceSnapMaxDistanceSeconds: SettingValueNumber;
   positionalPriorEnabled: SettingValueBoolean;
   vttTranscriptsEnabled: SettingValueBoolean;
   chaptersEnabled: SettingValueBoolean;
@@ -321,6 +328,9 @@ export interface Settings {
     audioCuePairMinBreakSeconds: number;
     audioCuePairMaxBreakSeconds: number;
     audioCuePairMaxBreakFraction: number;
+    silenceSnapNoiseDb: number;
+    silenceSnapMinDurationSeconds: number;
+    silenceSnapMaxDistanceSeconds: number;
     positionalPriorEnabled: boolean;
   };
 }
@@ -373,6 +383,9 @@ export interface UpdateSettingsPayload {
   audioCuePairMinBreakSeconds?: number;
   audioCuePairMaxBreakSeconds?: number;
   audioCuePairMaxBreakFraction?: number;
+  silenceSnapNoiseDb?: number;
+  silenceSnapMinDurationSeconds?: number;
+  silenceSnapMaxDistanceSeconds?: number;
   positionalPriorEnabled?: boolean;
   vttTranscriptsEnabled?: boolean;
   chaptersEnabled?: boolean;

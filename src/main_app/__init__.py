@@ -9,6 +9,7 @@ import socket
 import sys
 import threading
 import uuid
+from utils.session_defaults import _default_session_cookie_secure
 from pathlib import Path
 
 import defusedxml
@@ -512,7 +513,7 @@ else:
 
 # Session configuration for authentication
 app.secret_key = os.environ.get('SECRET_KEY') or get_or_create_secret_key()
-app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() == 'true'
+app.config['SESSION_COOKIE_SECURE'] = _default_session_cookie_secure()
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = os.environ.get('SESSION_COOKIE_SAMESITE', 'Strict')
 app.config['PERMANENT_SESSION_LIFETIME'] = int(os.environ.get('SESSION_LIFETIME_HOURS', '24')) * 3600

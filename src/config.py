@@ -229,6 +229,12 @@ AUDIO_CUE_CAPTURE_MAX_OUTRO_SECONDS = 60.0  # Longest show-outro stinger a user 
 # 1.5-2.5s clips of the same cue. Beyond this threshold, long-template
 # match quality degrades significantly; warn the user at save time.
 AUDIO_CUE_CAPTURE_WARN_AD_SECONDS = 5.0
+# Silence-snap tunables (Phase B). Per-feed opt-in via podcasts.silence_snap_enabled;
+# these globals shape the detector. DB-settable (silence_snap_* setting keys);
+# detection/snap logic consumes them in a later task.
+SILENCE_SNAP_NOISE_DB = -50.0               # Amplitude (dBFS) below which audio counts as silence
+SILENCE_SNAP_MIN_DURATION_SECONDS = 0.3     # Shortest sub-threshold span that counts as a silence
+SILENCE_SNAP_MAX_DISTANCE_SECONDS = 2.0     # Farthest an ad edge may move to reach a silence
 AUDIO_CUE_PAIR_CONFIDENCE = 0.85        # Min cue confidence to synthesize an ad from a pair
 AUDIO_CUE_PAIR_MIN_BREAK_SECONDS = 30.0   # Shortest plausible cue-pair break
 AUDIO_CUE_PAIR_MAX_BREAK_SECONDS = 480.0  # Longest plausible cue-pair break
@@ -387,7 +393,7 @@ def resolve_cue_template_score(db, podcast_id):
 
 
 
-# (override_col, setting_key, code_default, out_key) for the six float cue knobs.
+# (override_col, setting_key, code_default, out_key) for the float cue knobs.
 _CUE_FLOAT_KNOBS = [
     ('cue_pair_min_break_override',       'audio_cue_pair_min_break_seconds',  AUDIO_CUE_PAIR_MIN_BREAK_SECONDS,    'pair_min_break'),
     ('cue_pair_max_break_override',       'audio_cue_pair_max_break_seconds',  AUDIO_CUE_PAIR_MAX_BREAK_SECONDS,    'pair_max_break'),
@@ -399,16 +405,22 @@ _CUE_FLOAT_KNOBS = [
 
 
 def resolve_feed_cue_settings(db, podcast_id):
-    """Resolve all 7 per-feed cue knobs in one DB read.
+    """Resolve per-feed cue knobs in one DB read.
 
     Returns a dict with effective values for the processing hot path.
     Priority: per-feed override > global DB setting > code default.
     With all overrides NULL the result is byte-identical to the previous
     direct db.get_setting_* calls.
+
+    Also includes transition_snap_enabled as a plain bool (opt-in per-feed
+    flag with no global tier). silence_snap_enabled is intentionally absent:
+    silence gating is handled by resolve_silence_snap_enabled in the analyzer,
+    which gates whether silence spans are collected at all.
     """
     if not db:
         result = {out_key: default for _, _, default, out_key in _CUE_FLOAT_KNOBS}
         result['create_from_pairs'] = False
+        result['transition_snap_enabled'] = False
         return result
 
     # Fetch per-feed overrides; failure here still allows global reads below.
@@ -432,7 +444,64 @@ def resolve_feed_cue_settings(db, podcast_id):
             result[out_key] = float(raw)
         else:
             result[out_key] = db.get_setting_float(setting_key, code_default)
+
+    result['transition_snap_enabled'] = bool(overrides.get('transition_snap_enabled'))
     return result
+
+
+def _resolve_snap_flag(db, podcast_id, col):
+    """Per-feed boundary-snap opt-in: NULL/0 = off, 1 = on.
+
+    Simple opt-in (no global to inherit). Fails open to False on any DB
+    error so a broken read can never enable edge-moving behavior.
+    """
+    try:
+        if db and podcast_id is not None:
+            return bool(db.get_podcast_cue_settings_overrides(podcast_id).get(col))
+    except Exception:
+        _tunable_logger.warning('%s: flag read failed; defaulting to False', col)
+    return False
+
+
+def resolve_silence_snap_enabled(db, podcast_id):
+    """Per-feed silence-snap opt-in (Phase B). Default False."""
+    return _resolve_snap_flag(db, podcast_id, 'silence_snap_enabled')
+
+
+def resolve_transition_snap_enabled(db, podcast_id):
+    """Per-feed content-transition-snap opt-in (Phase B). Default False."""
+    return _resolve_snap_flag(db, podcast_id, 'transition_snap_enabled')
+
+
+_SILENCE_SNAP_DEFAULTS = {
+    'noise_db': SILENCE_SNAP_NOISE_DB,
+    'min_duration_seconds': SILENCE_SNAP_MIN_DURATION_SECONDS,
+    'max_distance_seconds': SILENCE_SNAP_MAX_DISTANCE_SECONDS,
+}
+
+
+def resolve_silence_snap_tunables(db):
+    """Global silence-snap tunables: noise floor, min duration, max snap distance.
+
+    Returns a dict with keys: noise_db, min_duration_seconds, max_distance_seconds.
+    Reads from global settings only (no per-feed override). Falls back to code
+    defaults when db is None or a read fails.
+    """
+    if not db:
+        return dict(_SILENCE_SNAP_DEFAULTS)
+    try:
+        return {
+            'noise_db': db.get_setting_float('silence_snap_noise_db', SILENCE_SNAP_NOISE_DB),
+            'min_duration_seconds': db.get_setting_float(
+                'silence_snap_min_duration_seconds', SILENCE_SNAP_MIN_DURATION_SECONDS
+            ),
+            'max_distance_seconds': db.get_setting_float(
+                'silence_snap_max_distance_seconds', SILENCE_SNAP_MAX_DISTANCE_SECONDS
+            ),
+        }
+    except Exception:
+        _tunable_logger.warning('resolve_silence_snap_tunables: read failed; using defaults')
+        return dict(_SILENCE_SNAP_DEFAULTS)
 
 
 # Cue template types (#350). A cue is one of a fixed set of types chosen from a
@@ -503,6 +572,18 @@ AUDIO_CUE_SOURCE_SPECTRAL = 'spectral'
 def is_template_cue(details):
     """True if a cue's ``details`` mark it as a precise template match."""
     return (details or {}).get('source') == AUDIO_CUE_SOURCE_TEMPLATE
+
+
+def is_transition_cue(details):
+    """True if a cue's ``details`` identify it as a content_transition type.
+
+    Used by snap to allow content_transition cues to move ad edges when
+    allow_transition is on, while keeping show_intro/show_outro excluded.
+    Both share the non_ad role so the cue_type check is mandatory here.
+    """
+    return (details or {}).get('cue_type') == AUDIO_CUE_TYPE_CONTENT_TRANSITION
+
+
 # Roles eligible to move each ad edge. Snap uses them per edge; cue-pair uses
 # the start set as openers and the end set as closers, so the all-boundary case
 # behaves as before and a 'start' cue can only open while an 'end' can only close.

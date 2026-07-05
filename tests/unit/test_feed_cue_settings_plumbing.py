@@ -50,6 +50,7 @@ def test_per_feed_snap_values_reach_snap_function():
         'snap_confidence': feed_snap_confidence,
         'snap_lead': feed_snap_lead,
         'snap_lag': feed_snap_lag,
+        'transition_snap_enabled': False,
     })
 
     ctx = MagicMock()
@@ -97,6 +98,7 @@ def test_per_feed_create_from_pairs_off_skips_synthesis():
         'snap_confidence': 0.80,
         'snap_lead': 10.0,
         'snap_lag': 4.0,
+        'transition_snap_enabled': False,
     })
 
     ctx = MagicMock()
@@ -140,6 +142,7 @@ def test_per_feed_create_from_pairs_on_calls_synthesis_with_feed_values():
         'snap_confidence': 0.80,
         'snap_lead': 10.0,
         'snap_lag': 4.0,
+        'transition_snap_enabled': False,
     })
 
     ctx = MagicMock()

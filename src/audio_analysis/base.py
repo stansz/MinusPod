@@ -86,6 +86,11 @@ class AudioAnalysisResult:
     errors: List[str] = field(default_factory=list)
     # Near-miss telemetry (#350). Advisory only -- never signals.
     cue_near_misses: List[Dict[str, Any]] = field(default_factory=list)
+    # Silence spans from silencedetect (Phase B). Advisory only -- never signals.
+    silence_spans: List[Dict[str, Any]] = field(default_factory=list)
+    # Resolved silence-snap tunables from the analyzer pass; set when silence
+    # detection ran so processing.py can reuse them without a second DB read.
+    silence_tunables: Optional[Dict[str, Any]] = None
 
     def get_signals_by_type(self, signal_type: str) -> List[AudioSegmentSignal]:
         """Get all signals of a specific type."""
@@ -103,4 +108,7 @@ class AudioAnalysisResult:
         # bloat the stored analysis JSON. No from_dict exists to keep in sync.
         if self.cue_near_misses:
             out['cue_near_misses'] = self.cue_near_misses
+        # Only emit silence_spans when present (same rationale as cue_near_misses).
+        if self.silence_spans:
+            out['silence_spans'] = self.silence_spans
         return out

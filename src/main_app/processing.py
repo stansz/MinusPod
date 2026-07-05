@@ -17,6 +17,7 @@ from ad_detector import (
 from ad_detector.cue_boundary_snap import snap_ad_boundaries_to_cues
 from ad_detector.cue_pair_ads import synthesize_ads_from_cue_pairs
 from ad_detector.cue_telemetry import build_cue_detection_records
+from ad_detector.silence_boundary_snap import snap_ad_boundaries_to_silence
 from ad_reviewer import (
     AdReviewer, ReviewVerdict, split_resurrection_pool,
 )
@@ -26,6 +27,7 @@ from config import (
     MIN_CUT_CONFIDENCE, MAX_EPISODE_RETRIES,
     AUDIO_CUE_PAIR_CONFIDENCE, AUDIO_CUE_PAIR_ORIENT_WINDOW_SECONDS,
     resolve_feed_cue_settings,
+    resolve_silence_snap_tunables,
 )
 from llm_capabilities import (
     PASS_AD_DETECTION_1, PASS_AD_DETECTION_2,
@@ -389,6 +391,7 @@ def _detect_ads_first_pass(ctx, segments, audio_path,
     snap_confidence = cue_settings['snap_confidence']
     snap_lead = cue_settings['snap_lead']
     snap_lag = cue_settings['snap_lag']
+    allow_transition = cue_settings['transition_snap_enabled']
 
     # Cue-pair ad synthesis (opt-in): when the LLM missed a break that the cue
     # matcher bracketed with two high-confidence cues, materialize a synthetic
@@ -441,16 +444,33 @@ def _detect_ads_first_pass(ctx, segments, audio_path,
                 min_confidence=snap_confidence,
                 snap_lead_s=snap_lead,
                 snap_lag_s=snap_lag,
+                allow_transition=allow_transition,
             )
         except Exception as e:
             audio_logger.warning(
                 f"[{slug}:{episode_id}] Cue boundary snap skipped: {e}"
             )
 
-    # Record per-cue detection telemetry (advisory only; never alters the cuts).
-    # Captures every template cue with its match score and how detection used it
-    # (snap / pair / none / below_threshold), plus edge distance and unused
-    # reason, so the user can judge a feed's cues and tune thresholds (#350).
+    # Snap ad edges to nearby silence spans (per-feed opt-in, Phase B task B3).
+    # Duration-only by design; ignores compute_applied_cuts trust exceptions.
+    silence_spans = audio_analysis_result.silence_spans if audio_analysis_result else []
+    if first_pass_ads and silence_spans:
+        try:
+            # Use tunables the analyzer already resolved; fall back only when
+            # audio_analysis_result is absent (defensive, not a normal path).
+            cached = getattr(audio_analysis_result, 'silence_tunables', None)
+            silence_tunables = cached if cached is not None else resolve_silence_snap_tunables(db)
+            snap_ad_boundaries_to_silence(
+                first_pass_ads, silence_spans,
+                max_distance_s=silence_tunables['max_distance_seconds'],
+                min_silence_s=silence_tunables['min_duration_seconds'],
+            )
+        except Exception as e:
+            audio_logger.warning(
+                f"[{slug}:{episode_id}] Silence boundary snap skipped: {e}"
+            )
+
+    # Record per-cue detection telemetry (advisory only; measures pre-snap edges so distances reflect original LLM boundaries).
     if audio_analysis_result and podcast_id:
         try:
             records = build_cue_detection_records(
