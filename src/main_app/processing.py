@@ -456,7 +456,10 @@ def _detect_ads_first_pass(ctx, segments, audio_path,
     silence_spans = audio_analysis_result.silence_spans if audio_analysis_result else []
     if first_pass_ads and silence_spans:
         try:
-            silence_tunables = resolve_silence_snap_tunables(db)
+            # Use tunables the analyzer already resolved; fall back only when
+            # audio_analysis_result is absent (defensive, not a normal path).
+            cached = getattr(audio_analysis_result, 'silence_tunables', None)
+            silence_tunables = cached if cached is not None else resolve_silence_snap_tunables(db)
             snap_ad_boundaries_to_silence(
                 first_pass_ads, silence_spans,
                 max_distance_s=silence_tunables['max_distance_seconds'],

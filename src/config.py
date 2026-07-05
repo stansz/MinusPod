@@ -412,13 +412,14 @@ def resolve_feed_cue_settings(db, podcast_id):
     With all overrides NULL the result is byte-identical to the previous
     direct db.get_setting_* calls.
 
-    Also includes silence_snap_enabled and transition_snap_enabled as plain
-    bool values. These are opt-in per-feed flags with no global tier.
+    Also includes transition_snap_enabled as a plain bool (opt-in per-feed
+    flag with no global tier). silence_snap_enabled is intentionally absent:
+    silence gating is handled by resolve_silence_snap_enabled in the analyzer,
+    which gates whether silence spans are collected at all.
     """
     if not db:
         result = {out_key: default for _, _, default, out_key in _CUE_FLOAT_KNOBS}
         result['create_from_pairs'] = False
-        result['silence_snap_enabled'] = False
         result['transition_snap_enabled'] = False
         return result
 
@@ -444,7 +445,6 @@ def resolve_feed_cue_settings(db, podcast_id):
         else:
             result[out_key] = db.get_setting_float(setting_key, code_default)
 
-    result['silence_snap_enabled'] = bool(overrides.get('silence_snap_enabled'))
     result['transition_snap_enabled'] = bool(overrides.get('transition_snap_enabled'))
     return result
 
@@ -473,6 +473,13 @@ def resolve_transition_snap_enabled(db, podcast_id):
     return _resolve_snap_flag(db, podcast_id, 'transition_snap_enabled')
 
 
+_SILENCE_SNAP_DEFAULTS = {
+    'noise_db': SILENCE_SNAP_NOISE_DB,
+    'min_duration_seconds': SILENCE_SNAP_MIN_DURATION_SECONDS,
+    'max_distance_seconds': SILENCE_SNAP_MAX_DISTANCE_SECONDS,
+}
+
+
 def resolve_silence_snap_tunables(db):
     """Global silence-snap tunables: noise floor, min duration, max snap distance.
 
@@ -481,11 +488,7 @@ def resolve_silence_snap_tunables(db):
     defaults when db is None or a read fails.
     """
     if not db:
-        return {
-            'noise_db': SILENCE_SNAP_NOISE_DB,
-            'min_duration_seconds': SILENCE_SNAP_MIN_DURATION_SECONDS,
-            'max_distance_seconds': SILENCE_SNAP_MAX_DISTANCE_SECONDS,
-        }
+        return dict(_SILENCE_SNAP_DEFAULTS)
     try:
         return {
             'noise_db': db.get_setting_float('silence_snap_noise_db', SILENCE_SNAP_NOISE_DB),
@@ -498,11 +501,7 @@ def resolve_silence_snap_tunables(db):
         }
     except Exception:
         _tunable_logger.warning('resolve_silence_snap_tunables: read failed; using defaults')
-        return {
-            'noise_db': SILENCE_SNAP_NOISE_DB,
-            'min_duration_seconds': SILENCE_SNAP_MIN_DURATION_SECONDS,
-            'max_distance_seconds': SILENCE_SNAP_MAX_DISTANCE_SECONDS,
-        }
+        return dict(_SILENCE_SNAP_DEFAULTS)
 
 
 # Cue template types (#350). A cue is one of a fixed set of types chosen from a
