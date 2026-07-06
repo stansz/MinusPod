@@ -100,7 +100,7 @@ All changes are backwards-compatible. If you don't want the fork features, the b
 
 ## Current Deployment
 
-Running on OVH bare metal (vps-f8a9b398, 51.254.128.5):
+Running on bare metal:
 
 - **Container:** `docker.io/ttlequals0/minuspod:cpu` via Podman Quadlet
 - **LLM:** NVIDIA NIM free tier — Llama 3.3 70B (first pass), Qwen 3 Next 80B (verification), Gemma 4 31B (chapters)
