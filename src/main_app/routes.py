@@ -47,11 +47,9 @@ from utils.http import client_ip
 from utils.opml import build_opml_xml
 
 # Fork change: In-memory cache for _lookup_episode results to avoid
-# re-fetching upstream RSS on every HEAD request. Cache key: (slug, episode_id).
-# Value: (episode_dict, podcast_name, timestamp). TTL is 15 minutes (900s),
-# matching the background RSS refresh interval.
-_episode_lookup_cache = {}
-_EPISODE_LOOKUP_CACHE_TTL = 900  # 15 minutes, matching background RSS refresh interval
+# re-fetching upstream RSS on every HEAD request. Owned in
+# main_app/shared_state so routes, feeds, and processing share one
+# instance and can invalidate it consistently.
 
 # Resolved once at registration time
 STATIC_DIR = None
@@ -95,19 +93,17 @@ def _lookup_episode(slug, episode_id, feed_map, episode_row=None):
     episode_dict keys: url, title, description, artwork_url, published.
     Falls back to database if episode is not in the upstream RSS feed.
 
-    Fork change: Results are cached in _episode_lookup_cache with a 15-minute
+    Results are cached in shared_state.episode_lookup_cache with a 15-minute
     TTL so that repeated HEAD/GET requests don't re-fetch the upstream RSS
-    feed on every call. The cache is per-worker and matches the background
-    RSS refresh interval, so stale entries are harmless.
+    feed on every call. The TTL matches the background RSS refresh interval,
+    so stale entries are harmless, and feeds.py invalidates the cache on
+    every successful refresh.
     """
-    # Check in-memory cache first
-    cache_key = (slug, episode_id)
-    if cache_key in _episode_lookup_cache:
-        cached_result, cached_name, cached_ts = _episode_lookup_cache[cache_key]
-        if time.time() - cached_ts < _EPISODE_LOOKUP_CACHE_TTL:
-            return cached_result, cached_name
-        else:
-            del _episode_lookup_cache[cache_key]
+    from main_app.shared_state import episode_lookup_cache
+    cache_key = f"{slug}:{episode_id}"
+    cached = episode_lookup_cache.get(cache_key)
+    if cached is not None:
+        return cached
 
     original_feed = rss_parser.fetch_feed(feed_map[slug]['in'])
     if original_feed:
@@ -116,7 +112,7 @@ def _lookup_episode(slug, episode_id, feed_map, episode_row=None):
         episodes = rss_parser.extract_episodes(original_feed, parsed_feed=parsed_feed)
         for ep in episodes:
             if ep['id'] == episode_id:
-                _episode_lookup_cache[cache_key] = (ep, podcast_name, time.time())
+                episode_lookup_cache.set(cache_key, (ep, podcast_name))
                 return ep, podcast_name
 
     # Fallback: episode not in upstream RSS (dropped off due to age/cap).
@@ -132,7 +128,7 @@ def _lookup_episode(slug, episode_id, feed_map, episode_row=None):
             'published': episode.get('published_at'),
         }
         db_name = episode.get('podcast_title', 'Unknown')
-        _episode_lookup_cache[cache_key] = (db_result, db_name, time.time())
+        episode_lookup_cache.set(cache_key, (db_result, db_name))
         return db_result, db_name
 
     return None, None

@@ -17,6 +17,7 @@ from main_app.cache import TTLCache
 # positional 5-tuple; replacing it with direct imports removes the
 # tuple-reorder footgun the audit flagged.
 from main_app import db, rss_parser, storage, status_service, pattern_service
+from main_app.shared_state import invalidate_episode_lookup_cache
 from main_app.feed_auth import active_feed_key
 
 refresh_logger = logging.getLogger('podcast.refresh')
@@ -326,17 +327,21 @@ def _build_and_save_served_rss(slug, feed_content, parsed_feed, podcast):
     # even though the stored key is retained for re-enable.
     feed_auth_key = active_feed_key(db)
     modified_rss = rss_parser.modify_feed(feed_content, slug, storage=storage,
-                                          max_episodes=feed_cap,
-                                          extra_episodes=extra_episodes,
-                                          processed_only=processed_only,
-                                          processed_episode_ids=processed_ids,
-                                          episode_statuses=episode_statuses,
-                                          parsed_feed=parsed_feed,
-                                          title_override=(podcast or {}).get('title_override'),
-                                          watermark_artwork=watermark_artwork,
-                                          feed_auth_key=feed_auth_key)
+    max_episodes=feed_cap,
+    extra_episodes=extra_episodes,
+    processed_only=processed_only,
+    processed_episode_ids=processed_ids,
+    episode_statuses=episode_statuses,
+    parsed_feed=parsed_feed,
+    title_override=(podcast or {}).get('title_override'),
+    watermark_artwork=watermark_artwork,
+    feed_auth_key=feed_auth_key)
     storage.save_rss(slug, modified_rss)
     db.update_podcast(slug, last_checked_at=utc_now_iso())
+    # Re-render invalidates any cached upstream episode lookups (URL,
+    # title, artwork) that _lookup_episode in routes.py may have pinned,
+    # so a feed that changed upstream is reflected on the next request.
+    invalidate_episode_lookup_cache(slug)
 
 
 def rebuild_served_rss(slug, podcast=None):

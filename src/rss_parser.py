@@ -800,14 +800,16 @@ class RSSParser:
                                               episode_id, key=feed_auth_key)
 
             lines.append('<item>')
-            # Fork change: Append status label to episode title based on processing status
-            title = entry.get("title", "")
-            if episode_statuses:
-                ep_status = episode_statuses.get(episode_id)
-                if ep_status == 'processed':
-                    title = f"{title} [Ad-Free]"
-                elif ep_status in ('processing', 'pending'):
-                    title = f"{title} [Cleaning...]"
+        # Fork change: Append status label to episode title based on processing status
+        title = entry.get("title", "")
+        if episode_statuses:
+            ep_status = episode_statuses.get(episode_id)
+            if ep_status == 'processed':
+                title = f"{title} [Ad-Free]"
+            elif ep_status in ('processing', 'pending'):
+                title = f"{title} [Cleaning...]"
+            elif ep_status == 'discovered':
+                title = f"{title} [Original]"
             lines.append(f'  <title>{self._escape_xml(title)}</title>')
             lines.append(f'  <description><![CDATA[{self._escape_cdata(self._get_episode_description(entry))}]]></description>')
             lines.append(f'  <link>{self._escape_xml(entry.get("link", ""))}</link>')
