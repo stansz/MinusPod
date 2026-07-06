@@ -49,13 +49,13 @@ Open [`docs/architecture.html`](docs/architecture.html) in any browser for an in
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         CLIENT LAYER                                 │
-│  AntennaPod          MinusPod Web UI         Hermes Agent API        │
-│  (Android)           (React Settings)       (Trigger/Monitor)       │
+│  AntennaPod            MinusPod Web UI          External Trigger     │
+│  (Android)             (React Settings)        (API/Automation)      │
 └──────┬──────────────────────┬────────────────────┬──────────────────┘
-       │         HTTPS         │   via CF Tunnel    │
+       │         HTTPS         │  via Reverse Proxy │
        ▼                      ▼                    ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│              Cloudflare Tunnel (pod.ogsapps.cc)                       │
+│              Reverse Proxy / Tunnel                                  │
 └──────────────────────────────┬───────────────────────────────────────┘
                                ▼
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -98,19 +98,9 @@ Open [`docs/architecture.html`](docs/architecture.html) in any browser for an in
 
 All changes are backwards-compatible. If you don't want the fork features, the behavior is identical to upstream.
 
-## Current Deployment
+## Processing Performance
 
-Running on bare metal:
-
-- **Container:** `docker.io/ttlequals0/minuspod:cpu` via Podman Quadlet
-- **LLM:** NVIDIA NIM free tier — Llama 3.3 70B (first pass), Qwen 3 Next 80B (verification), Gemma 4 31B (chapters)
-- **Whisper:** Groq free tier — `whisper-large-v3-turbo`
-- **Tunnel:** Cloudflare → `pod.ogsapps.cc`
-- **Auth:** Session-based password auth (UI + API share same password)
-- **Retention:** 5 days (auto-cleanup of processed files)
-- **11 podcasts** configured, 7000+ episodes discovered
-
-### Processing Performance
+Typical performance with Groq Whisper + NVIDIA NIM free tier:
 
 | Metric | Value |
 |--------|-------|
@@ -118,6 +108,8 @@ Running on bare metal:
 | Full processing (57 min episode) | ~12 minutes |
 | Ads removed (typical) | 5-14 per episode |
 | Cost per episode | $0.00 |
+
+---
 
 ---
 
