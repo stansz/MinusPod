@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MinusPod Fork Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1300px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #34d399; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .fork-badge { display: inline-block; background: rgba(52, 211, 153, 0.15); border: 1px solid #34d399; color: #34d399; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; margin-left: 0.5rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 1100px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; } .card-dot.emerald { background: #34d399; } .card-dot.violet { background: #a78bfa; } .card-dot.amber { background: #fbbf24; } .card-dot.rose { background: #fb7185; } .card-dot.orange { background: #fb923c; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .card .new-tag { color: #34d399; font-size: 0.65rem; font-weight: 700; background: rgba(52, 211, 153, 0.15); padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>MinusPod Fork Architecture</h1>
+        <span class="fork-badge">Fork of ttlequals0/MinusPod</span>
+      </div>
+      <p class="subtitle">Self-hosted podcast ad remover with original-audio fallback and RSS status labeling</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1200 760">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-new" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ===== CLIENT LAYER ===== -->
+        <rect x="40" y="40" width="1120" height="120" rx="12" fill="rgba(8, 51, 68, 0.15)" stroke="#22d3ee" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="52" y="60" fill="#22d3ee" font-size="10" font-weight="600">CLIENT LAYER</text>
+
+        <!-- AntennaPod -->
+        <rect x="80" y="80" width="160" height="60" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="160" y="103" fill="white" font-size="11" font-weight="600" text-anchor="middle">AntennaPod</text>
+        <text x="160" y="119" fill="#94a3b8" font-size="9" text-anchor="middle">Android Podcast Player</text>
+
+        <!-- Web UI -->
+        <rect x="280" y="80" width="160" height="60" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="360" y="103" fill="white" font-size="11" font-weight="600" text-anchor="middle">MinusPod Web UI</text>
+        <text x="360" y="119" fill="#94a3b8" font-size="9" text-anchor="middle">React • Settings • Editor</text>
+
+        <!-- Hermes Agent API -->
+        <rect x="480" y="80" width="160" height="60" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="560" y="103" fill="white" font-size="11" font-weight="600" text-anchor="middle">Hermes Agent</text>
+        <text x="560" y="119" fill="#94a3b8" font-size="9" text-anchor="middle">API Trigger • Monitoring</text>
+
+        <!-- ===== CF TUNNEL ===== -->
+        <rect x="350" y="195" width="400" height="50" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="550" y="218" fill="white" font-size="11" font-weight="600" text-anchor="middle">Cloudflare Tunnel</text>
+        <text x="550" y="234" fill="#94a3b8" font-size="9" text-anchor="middle">pod.ogsapps.cc → localhost:8000</text>
+
+        <!-- Arrows: clients to CF -->
+        <line x1="160" y1="140" x2="450" y2="193" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead)" stroke-dasharray="3,3"/>
+        <line x1="360" y1="140" x2="520" y2="193" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead)" stroke-dasharray="3,3"/>
+        <line x1="560" y1="140" x2="600" y2="193" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead)" stroke-dasharray="3,3"/>
+
+        <!-- ===== MINUSPOD CONTAINER ===== -->
+        <rect x="40" y="275" width="1120" height="410" rx="12" fill="rgba(6, 78, 59, 0.08)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="52" y="295" fill="#34d399" font-size="10" font-weight="600">MINUSPOD CONTAINER (Podman Quadlet • Port 8000 • 4 Gunicorn Workers)</text>
+
+        <!-- Flask App -->
+        <rect x="80" y="315" width="200" height="100" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="180" y="338" fill="white" font-size="12" font-weight="600" text-anchor="middle">Flask + Gunicorn</text>
+        <text x="180" y="356" fill="#94a3b8" font-size="9" text-anchor="middle">RSS Feed Serving</text>
+        <text x="180" y="370" fill="#94a3b8" font-size="9" text-anchor="middle">Episode Serving</text>
+        <text x="180" y="384" fill="#94a3b8" font-size="9" text-anchor="middle">REST API + Auth</text>
+        <text x="180" y="402" fill="#34d399" font-size="8" text-anchor="middle">routes.py • feeds.py</text>
+
+        <!-- Original Fallback (NEW) -->
+        <rect x="80" y="435" width="200" height="80" rx="6" fill="rgba(52, 211, 153, 0.15)" stroke="#34d399" stroke-width="2"/>
+        <text x="180" y="458" fill="#34d399" font-size="11" font-weight="600" text-anchor="middle">Original Audio Fallback</text>
+        <text x="180" y="476" fill="#94a3b8" font-size="8" text-anchor="middle">Unprocessed? Stream original</text>
+        <text x="180" y="488" fill="#94a3b8" font-size="8" text-anchor="middle">Trigger BG processing</text>
+        <text x="180" y="505" fill="#34d399" font-size="7" text-anchor="middle">★ FORK ADDITION</text>
+
+        <!-- RSS Label (NEW) -->
+        <rect x="80" y="535" width="200" height="80" rx="6" fill="rgba(52, 211, 153, 0.15)" stroke="#34d399" stroke-width="2"/>
+        <text x="180" y="558" fill="#34d399" font-size="11" font-weight="600" text-anchor="middle">RSS Status Labeling</text>
+        <text x="180" y="576" fill="#94a3b8" font-size="8" text-anchor="middle">[Ad-Free] in episode title</text>
+        <text x="180" y="588" fill="#94a3b8" font-size="8" text-anchor="middle">[Processing] while cleaning</text>
+        <text x="180" y="605" fill="#34d399" font-size="7" text-anchor="middle">★ FORK ADDITION</text>
+
+        <!-- Processing Pipeline -->
+        <rect x="340" y="315" width="260" height="300" rx="6" fill="rgba(6, 78, 59, 0.3)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="470" y="338" fill="white" font-size="12" font-weight="600" text-anchor="middle">Processing Pipeline</text>
+        <text x="470" y="356" fill="#34d399" font-size="9" text-anchor="middle">JIT or auto-process</text>
+
+        <!-- Whisper -->
+        <rect x="360" y="370" width="220" height="45" rx="6" fill="rgba(251, 146, 60, 0.2)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="470" y="390" fill="white" font-size="10" font-weight="600" text-anchor="middle">1. Groq Whisper</text>
+        <text x="470" y="404" fill="#94a3b8" font-size="8" text-anchor="middle">whisper-large-v3-turbo • ~50s</text>
+
+        <!-- LLM Detection -->
+        <rect x="360" y="425" width="220" height="45" rx="6" fill="rgba(251, 191, 36, 0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="470" y="445" fill="white" font-size="10" font-weight="600" text-anchor="middle">2. NVIDIA NIM LLM</text>
+        <text x="470" y="459" fill="#94a3b8" font-size="8" text-anchor="middle">Llama 3.3 70B → Qwen 3 Next</text>
+
+        <!-- FFmpeg -->
+        <rect x="360" y="480" width="220" height="45" rx="6" fill="rgba(251, 146, 60, 0.2)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="470" y="500" fill="white" font-size="10" font-weight="600" text-anchor="middle">3. FFmpeg Audio Cut</text>
+        <text x="470" y="514" fill="#94a3b8" font-size="8" text-anchor="middle">Remove ad segments • Re-encode</text>
+
+        <!-- Pattern Learning -->
+        <rect x="360" y="535" width="220" height="45" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="470" y="555" fill="white" font-size="10" font-weight="600" text-anchor="middle">4. Pattern Learning</text>
+        <text x="470" y="569" fill="#94a3b8" font-size="8" text-anchor="middle">Cross-episode ad patterns</text>
+
+        <!-- Pipeline arrows -->
+        <line x1="470" y1="415" x2="470" y2="423" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="470" y1="470" x2="470" y2="478" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="470" y1="525" x2="470" y2="533" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- Storage -->
+        <rect x="660" y="315" width="160" height="100" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="740" y="338" fill="white" font-size="11" font-weight="600" text-anchor="middle">SQLite DB</text>
+        <text x="740" y="354" fill="#94a3b8" font-size="8" text-anchor="middle">podcast.db</text>
+        <text x="740" y="368" fill="#94a3b8" font-size="8" text-anchor="middle">episodes • feeds</text>
+        <text x="740" y="382" fill="#94a3b8" font-size="8" text-anchor="middle">settings • patterns</text>
+        <text x="740" y="400" fill="#a78bfa" font-size="7" text-anchor="middle">Volume: systemd-minuspod-data</text>
+
+        <!-- Audio Storage -->
+        <rect x="660" y="435" width="160" height="80" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="740" y="458" fill="white" font-size="11" font-weight="600" text-anchor="middle">Audio Storage</text>
+        <text x="740" y="474" fill="#94a3b8" font-size="8" text-anchor="middle">Processed MP3s</text>
+        <text x="740" y="488" fill="#94a3b8" font-size="8" text-anchor="middle">Transcripts (VTT)</text>
+        <text x="740" y="502" fill="#94a3b8" font-size="8" text-anchor="middle">Chapters JSON</text>
+
+        <!-- Retention -->
+        <rect x="660" y="535" width="160" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="740" y="558" fill="white" font-size="10" font-weight="600" text-anchor="middle">Retention</text>
+        <text x="740" y="574" fill="#94a3b8" font-size="8" text-anchor="middle">5 days • Auto-cleanup</text>
+
+        <!-- Internal arrows -->
+        <line x1="280" y1="365" x2="338" y2="365" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="308" y="358" fill="#94a3b8" font-size="8">process</text>
+        <line x1="600" y1="400" x2="658" y2="365" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="600" y1="500" x2="658" y2="475" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="280" y1="475" x2="338" y2="440" stroke="#34d399" stroke-width="2" marker-end="url(#arrowhead-new)"/>
+        <line x1="280" y1="575" x2="338" y2="400" stroke="#34d399" stroke-width="2" marker-end="url(#arrowhead-new)"/>
+
+        <!-- ===== EXTERNAL SERVICES ===== -->
+        <rect x="880" y="315" width="240" height="200" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="1000" y="338" fill="white" font-size="11" font-weight="600" text-anchor="middle">External APIs (Free Tier)</text>
+
+        <rect x="900" y="352" width="200" height="35" rx="4" fill="rgba(251, 146, 60, 0.15)" stroke="#fb923c" stroke-width="1"/>
+        <text x="1000" y="374" fill="#fb923c" font-size="9" font-weight="600" text-anchor="middle">Groq — Whisper Transcription</text>
+
+        <rect x="900" y="395" width="200" height="35" rx="4" fill="rgba(251, 191, 36, 0.15)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="1000" y="417" fill="#fbbf24" font-size="9" font-weight="600" text-anchor="middle">NVIDIA NIM — LLM Detection</text>
+
+        <rect x="900" y="438" width="200" height="35" rx="4" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1"/>
+        <text x="1000" y="460" fill="#94a3b8" font-size="9" font-weight="600" text-anchor="middle">Podcast RSS Feeds (upstream)</text>
+
+        <rect x="900" y="481" width="200" height="20" rx="4" fill="transparent" stroke="#94a3b8" stroke-width="1"/>
+        <text x="1000" y="495" fill="#94a3b8" font-size="7" text-anchor="middle">Simplecast • Megaphone • CBC • etc</text>
+
+        <!-- External arrows -->
+        <line x1="600" y1="392" x2="898" y2="370" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="600" y1="447" x2="898" y2="412" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="280" y1="475" x2="600" y2="450" stroke="#34d399" stroke-width="2" marker-end="url(#arrowhead-new)" stroke-dasharray="4,2"/>
+
+        <!-- CF → Container -->
+        <line x1="550" y1="245" x2="550" y2="313" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="450" y1="245" x2="200" y2="313" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- ===== LEGEND ===== -->
+        <text x="890" y="550" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="880" y="562" width="16" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="902" y="570" fill="#94a3b8" font-size="8">Client</text>
+        <rect x="880" y="578" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="902" y="586" fill="#94a3b8" font-size="8">Backend</text>
+        <rect x="880" y="594" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="902" y="602" fill="#94a3b8" font-size="8">Database</text>
+        <rect x="880" y="610" width="16" height="10" rx="2" fill="rgba(52, 211, 153, 0.15)" stroke="#34d399" stroke-width="2"/>
+        <text x="902" y="618" fill="#34d399" font-size="8">★ Fork Addition</text>
+        <rect x="960" y="562" width="16" height="10" rx="2" fill="rgba(251, 146, 60, 0.2)" stroke="#fb923c" stroke-width="1"/>
+        <text x="982" y="570" fill="#94a3b8" font-size="8">Processing</text>
+        <rect x="960" y="578" width="16" height="10" rx="2" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1"/>
+        <text x="982" y="586" fill="#94a3b8" font-size="8">External</text>
+        <rect x="960" y="594" width="16" height="10" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="982" y="602" fill="#94a3b8" font-size="8">Tunnel/Proxy</text>
+        <line x1="960" y1="615" x2="976" y2="615" stroke="#34d399" stroke-width="2"/>
+        <text x="982" y="618" fill="#94a3b8" font-size="8">New flow</text>
+
+        <!-- ===== OVH HOST boundary ===== -->
+        <rect x="20" y="255" width="1160" height="445" rx="12" fill="rgba(120, 53, 15, 0.04)" stroke="#fbbf24" stroke-width="0.5" stroke-dasharray="8,4"/>
+        <text x="32" y="248" fill="#fbbf24" font-size="9" font-weight="600">OVH BARE METAL — vps-f8a9b398 (51.254.128.5) • 96GB Disk • 35GB Free</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>Fork Changes</h3>
+        </div>
+        <ul>
+          <li>• <strong>Original audio fallback</strong><span class="new-tag">NEW</span></li>
+          <li style="padding-left: 12px; font-size: 0.7rem;">Unprocessed episodes stream original audio immediately — no 503 blocking</li>
+          <li>• <strong>RSS status labeling</strong><span class="new-tag">NEW</span></li>
+          <li style="padding-left: 12px; font-size: 0.7rem;">[Ad-Free] / [Processing] tags in episode titles visible in podcast apps</li>
+          <li>• <strong>HEAD request caching</strong><span class="new-tag">NEW</span></li>
+          <li style="padding-left: 12px; font-size: 0.7rem;">Cache upstream RSS lookups to prevent server lockups on feed refresh</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>Processing Pipeline</h3>
+        </div>
+        <ul>
+          <li>• Groq Whisper: ~50s per hour of audio</li>
+          <li>• NVIDIA NIM: 2-pass LLM ad detection</li>
+          <li>• FFmpeg: cuts detected ad segments</li>
+          <li>• Pattern learning: gets smarter over time</li>
+          <li>• Total: ~12 min for a 60-min episode</li>
+          <li>• Cost: $0.00 (all free tiers)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>Deployment</h3>
+        </div>
+        <ul>
+          <li>• Podman Quadlet on OVH bare metal</li>
+          <li>• 4 Gunicorn workers (32 threads)</li>
+          <li>• CF Tunnel: pod.ogsapps.cc</li>
+          <li>• SQLite at systemd-minuspod-data</li>
+          <li>• 5-day retention, auto-cleanup</li>
+          <li>• 11 podcasts, 7000+ episodes discovered</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">
+      stansz/MinusPod (fork) • Based on ttlequals0/MinusPod v2.36.0 • MIT License • 2026-07-05
+    </p>
+  </div>
+</body>
+</html>
