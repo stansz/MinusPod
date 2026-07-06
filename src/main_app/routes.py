@@ -10,7 +10,7 @@ from pathlib import Path
 
 import requests
 import requests.exceptions
-from flask import Response, send_file, abort, send_from_directory, request
+from flask import Response, redirect, send_file, abort, send_from_directory, request
 from werkzeug.exceptions import NotFound
 from werkzeug.utils import safe_join
 
@@ -45,6 +45,13 @@ from main_app import db, storage, rss_parser, status_service
 from main_app.feed_auth import KEY_RE, active_feed_key, require_feed_key
 from utils.http import client_ip
 from utils.opml import build_opml_xml
+
+# Fork change: In-memory cache for _lookup_episode results to avoid
+# re-fetching upstream RSS on every HEAD request. Cache key: (slug, episode_id).
+# Value: (episode_dict, podcast_name, timestamp). TTL is 15 minutes (900s),
+# matching the background RSS refresh interval.
+_episode_lookup_cache = {}
+_EPISODE_LOOKUP_CACHE_TTL = 900  # 15 minutes, matching background RSS refresh interval
 
 # Resolved once at registration time
 STATIC_DIR = None
@@ -87,7 +94,21 @@ def _lookup_episode(slug, episode_id, feed_map, episode_row=None):
     Returns (episode_dict, podcast_name) or (None, None).
     episode_dict keys: url, title, description, artwork_url, published.
     Falls back to database if episode is not in the upstream RSS feed.
+
+    Fork change: Results are cached in _episode_lookup_cache with a 15-minute
+    TTL so that repeated HEAD/GET requests don't re-fetch the upstream RSS
+    feed on every call. The cache is per-worker and matches the background
+    RSS refresh interval, so stale entries are harmless.
     """
+    # Check in-memory cache first
+    cache_key = (slug, episode_id)
+    if cache_key in _episode_lookup_cache:
+        cached_result, cached_name, cached_ts = _episode_lookup_cache[cache_key]
+        if time.time() - cached_ts < _EPISODE_LOOKUP_CACHE_TTL:
+            return cached_result, cached_name
+        else:
+            del _episode_lookup_cache[cache_key]
+
     original_feed = rss_parser.fetch_feed(feed_map[slug]['in'])
     if original_feed:
         parsed_feed = rss_parser.parse_feed(original_feed)
@@ -95,20 +116,24 @@ def _lookup_episode(slug, episode_id, feed_map, episode_row=None):
         episodes = rss_parser.extract_episodes(original_feed, parsed_feed=parsed_feed)
         for ep in episodes:
             if ep['id'] == episode_id:
+                _episode_lookup_cache[cache_key] = (ep, podcast_name, time.time())
                 return ep, podcast_name
 
     # Fallback: episode not in upstream RSS (dropped off due to age/cap).
     # Use the original_url stored in the database from discovery.
     episode = episode_row or db.get_episode(slug, episode_id)
     if episode and episode.get('original_url'):
-        return {
+        db_result = {
             'id': episode_id,
             'url': episode['original_url'],
             'title': episode.get('title'),
             'description': episode.get('description'),
             'artwork_url': episode.get('artwork_url'),
             'published': episode.get('published_at'),
-        }, episode.get('podcast_title', 'Unknown')
+        }
+        db_name = episode.get('podcast_title', 'Unknown')
+        _episode_lookup_cache[cache_key] = (db_result, db_name, time.time())
+        return db_result, db_name
 
     return None, None
 
@@ -420,35 +445,17 @@ def register_routes(app):
         )
 
         if started:
-            feed_logger.info(f"[{slug}:{episode_id}] Started background processing")
-            return Response(
-                "Episode processing started, please retry",
-                status=503,
-                headers={'Retry-After': '30'}
-            )
+            feed_logger.info(f"[{slug}:{episode_id}] Started background processing, redirecting to original audio")
+            return redirect(original_url, code=302)
         elif reason == "already_processing":
-            feed_logger.info(f"[{slug}:{episode_id}] Already processing")
-            return Response(
-                "Episode is being processed",
-                status=503,
-                headers={'Retry-After': '30'}
-            )
+            feed_logger.info(f"[{slug}:{episode_id}] Already processing, redirecting to original audio")
+            return redirect(original_url, code=302)
         else:
-            # Queue is busy with another episode - queue this one and return 503
+            # Queue is busy with another episode - queue this one and redirect
             status_service.queue_episode(slug, episode_id, episode_title, podcast_name)
             queue_position = status_service.get_queue_position(slug, episode_id)
-            feed_logger.info(f"[{slug}:{episode_id}] Queue busy ({reason}), queued at position {queue_position}")
-            return Response(
-                json.dumps({
-                    'status': 'queued',
-                    'message': f'Episode queued for processing at position {queue_position}',
-                    'queuePosition': queue_position,
-                    'retryAfter': 60
-                }),
-                status=503,
-                mimetype='application/json',
-                headers={'Retry-After': '60'}
-            )
+            feed_logger.info(f"[{slug}:{episode_id}] Queue busy ({reason}), queued at position {queue_position}, redirecting to original audio")
+            return redirect(original_url, code=302)
 
     @app.route('/episodes/<slug>/<episode_id>.vtt')
     @validate_slug_and_episode_params

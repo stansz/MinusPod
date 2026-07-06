@@ -806,7 +806,7 @@ class RSSParser:
                 ep_status = episode_statuses.get(episode_id)
                 if ep_status == 'processed':
                     title = f"{title} [Ad-Free]"
-                elif ep_status in ('processing', 'pending', 'discovered'):
+                elif ep_status in ('processing', 'pending'):
                     title = f"{title} [Cleaning...]"
             lines.append(f'  <title>{self._escape_xml(title)}</title>')
             lines.append(f'  <description><![CDATA[{self._escape_cdata(self._get_episode_description(entry))}]]></description>')
