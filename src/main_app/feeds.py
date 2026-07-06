@@ -312,11 +312,13 @@ def _build_and_save_served_rss(slug, feed_content, parsed_feed, podcast):
 
     # When the resolved value is True, hide upstream entries that have not
     # finished processing so auto-downloading clients don't hit 503.
+    # Fork change: Always fetch episode statuses for status labeling on RSS titles.
+    # Previously only fetched when processed_only was True.
+    episode_statuses, _ = db.get_episode_statuses_for_podcast(slug)
     processed_only = db.is_only_expose_processed_for_podcast(slug, podcast=podcast)
     processed_ids = None
     if processed_only:
-        statuses, _ = db.get_episode_statuses_for_podcast(slug)
-        processed_ids = {eid for eid, status in statuses.items()
+        processed_ids = {eid for eid, status in episode_statuses.items()
                          if status == 'processed'}
 
     watermark_artwork = db.get_setting_bool('artwork_watermark_enabled', False)
@@ -328,6 +330,7 @@ def _build_and_save_served_rss(slug, feed_content, parsed_feed, podcast):
                                           extra_episodes=extra_episodes,
                                           processed_only=processed_only,
                                           processed_episode_ids=processed_ids,
+                                          episode_statuses=episode_statuses,
                                           parsed_feed=parsed_feed,
                                           title_override=(podcast or {}).get('title_override'),
                                           watermark_artwork=watermark_artwork,

@@ -643,6 +643,7 @@ class RSSParser:
                     extra_episodes: Optional[List[Dict]] = None,
                     processed_only: bool = False,
                     processed_episode_ids: Optional[set] = None,
+                    episode_statuses: Optional[Dict[str, str]] = None,
                     parsed_feed=None,
                     title_override: Optional[str] = None,
                     watermark_artwork: bool = False,
@@ -666,6 +667,11 @@ class RSSParser:
             processed_episode_ids: Allow-list of episode_ids the caller has
                 determined to be status='processed'. Required when
                 processed_only=True; ignored otherwise.
+            episode_statuses: Dict mapping episode_id -> status string for
+                status labeling on episode titles (fork change). When provided,
+                processed episodes get " [Ad-Free]" appended to the title, and
+                processing/queued episodes get " [Cleaning...]". Episodes with
+                no status or unrecognized status are left as-is.
             parsed_feed: Optional pre-parsed feedparser object. When supplied,
                 skips the internal parse_feed call - the caller will have
                 already paid that cost. Passing a None here re-parses
@@ -794,7 +800,15 @@ class RSSParser:
                                               episode_id, key=feed_auth_key)
 
             lines.append('<item>')
-            lines.append(f'  <title>{self._escape_xml(entry.get("title", ""))}</title>')
+            # Fork change: Append status label to episode title based on processing status
+            title = entry.get("title", "")
+            if episode_statuses:
+                ep_status = episode_statuses.get(episode_id)
+                if ep_status == 'processed':
+                    title = f"{title} [Ad-Free]"
+                elif ep_status in ('processing', 'pending', 'discovered'):
+                    title = f"{title} [Cleaning...]"
+            lines.append(f'  <title>{self._escape_xml(title)}</title>')
             lines.append(f'  <description><![CDATA[{self._escape_cdata(self._get_episode_description(entry))}]]></description>')
             lines.append(f'  <link>{self._escape_xml(entry.get("link", ""))}</link>')
             lines.append(f'  <guid>{self._escape_xml(entry.get("id", episode_url))}</guid>')
@@ -879,7 +893,9 @@ class RSSParser:
                                            ep.get('processed_version'),
                                            key=feed_auth_key)
         lines.append('<item>')
-        lines.append(f'  <title>{self._escape_xml(ep.get("title") or "Unknown")}</title>')
+        # Fork change: DB-appended episodes are always processed, label as Ad-Free
+        title = ep.get("title") or "Unknown"
+        lines.append(f'  <title>{self._escape_xml(f"{title} [Ad-Free]")}</title>')
         if ep.get('description'):
             lines.append(f'  <description><![CDATA[{self._escape_cdata(ep["description"])}]]></description>')
         lines.append(f'  <enclosure url="{modified_url}" type="audio/mpeg" />')
