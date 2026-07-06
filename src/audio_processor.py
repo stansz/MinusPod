@@ -130,6 +130,7 @@ class AudioProcessor:
                 '-filter:a', filter_str,
                 '-acodec', 'libmp3lame',
                 '-ab', self.bitrate,
+                '-threads', '3',
                 output_path,
             ]
             timeout = FFMPEG_LONG_TIMEOUT + int(duration / 12)
@@ -372,6 +373,7 @@ class AudioProcessor:
                 '-map', '[out]',
                 '-acodec', 'libmp3lame',
                 '-ab', self.bitrate,
+                '-threads', '3',
                 output_path
             ]
 
